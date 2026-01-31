@@ -1,0 +1,104 @@
+### MSME Agentic Operations - API Test File
+### Use with REST Client extension in VS Code
+### Or use curl/Postman
+
+@baseUrl = http://localhost:3000
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Input Gateway Status
+GET {{baseUrl}}/order/status
+
+###
+### TEST 1: Website Order (Structured JSON)
+###
+POST {{baseUrl}}/order/website
+Content-Type: application/json
+
+{
+  "userId": "user123",
+  "customerId": "CUST-001",
+  "customerName": "Rajesh Kumar",
+  "productId": "PROD-123",
+  "productName": "Widget A",
+  "quantity": 15,
+  "unit": "boxes",
+  "priority": "HIGH",
+  "deadline": "2026-02-01T15:00:00Z",
+  "notes": "Please pack carefully"
+}
+
+###
+### TEST 2: WhatsApp Order (Raw Text)
+###
+POST {{baseUrl}}/order/whatsapp
+Content-Type: application/json
+
+{
+  "phone": "+91-98765-43210",
+  "name": "Rajesh Kumar",
+  "message": "Hi, I need 15 boxes of Widget A by tomorrow 3pm. Urgent!",
+  "timestamp": "2026-01-31T10:30:00Z"
+}
+
+###
+### TEST 3: Website Order (Medium Priority)
+###
+POST {{baseUrl}}/order/website
+Content-Type: application/json
+
+{
+  "customerId": "CUST-002",
+  "customerName": "Priya Sharma",
+  "productId": "PROD-456",
+  "productName": "Widget B",
+  "quantity": 25,
+  "unit": "pieces",
+  "priority": "MEDIUM"
+}
+
+###
+### TEST 4: WhatsApp Order (Casual Message)
+###
+POST {{baseUrl}}/order/whatsapp
+Content-Type: application/json
+
+{
+  "phone": "+91-98765-99999",
+  "message": "Can I get 20 boxes of Widget A tomorrow morning?"
+}
+
+###
+### TEST 5: Invalid Order (Missing Required Fields)
+###
+POST {{baseUrl}}/order/website
+Content-Type: application/json
+
+{
+  "customerName": "Test User",
+  "quantity": 10
+}
+
+###
+### TEST 6: Invalid Order (Negative Quantity)
+###
+POST {{baseUrl}}/order/website
+Content-Type: application/json
+
+{
+  "productId": "PROD-123",
+  "productName": "Widget A",
+  "quantity": -5
+}
+
+###
+### TEST 7: Invalid WhatsApp (Empty Message)
+###
+POST {{baseUrl}}/order/whatsapp
+Content-Type: application/json
+
+{
+  "phone": "+91-98765-43210",
+  "message": ""
+}

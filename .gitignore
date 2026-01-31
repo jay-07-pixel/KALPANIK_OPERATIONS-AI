@@ -1,0 +1,26 @@
+# Dependencies
+backend/node_modules/
+
+# Environment and secrets
+backend/.env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build / cache
+backend/dist/
+.cache/
