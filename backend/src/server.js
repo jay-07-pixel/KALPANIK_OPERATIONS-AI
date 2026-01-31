@@ -84,10 +84,10 @@ function seedState() {
       role: 'PRODUCTION',
       skills: ['assembly', 'packing'],
       status: 'ONLINE',
-      currentWorkload: 0,
+      currentWorkload: 4.5,
       maxCapacity: 8
     }));
-    console.log('[Server] Seeded staff: Priya Sharma, Amit Kumar');
+    console.log('[Server] Seeded staff: Priya Sharma (0h free), Amit Kumar (4.5h busy, 3.5h free)');
   }
 }
 seedState();

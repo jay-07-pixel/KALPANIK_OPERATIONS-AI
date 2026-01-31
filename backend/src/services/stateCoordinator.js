@@ -212,11 +212,19 @@ class StateCoordinator {
       }));
       stateManager.calculateSystemState();
 
-      // Step 5: Workforce Agent — select best staff for this order's tasks
+      // Step 5: Workforce Agent — show 2–3 candidates, then select best for the job
       console.log(`[StateCoordinator] ➤ Step 5: Routing to Workforce Agent...`);
       const workforceResult = workforceAgent.selectBestStaffForOrder(persistedOrder, stateManager);
       let assignedStaffId = null;
       let assignedStaffName = null;
+
+      if (workforceResult.candidates && workforceResult.candidates.length > 0) {
+        console.log(`[StateCoordinator]   Candidates (${workforceResult.candidates.length}):`);
+        workforceResult.candidates.forEach((c, i) => {
+          const marker = workforceResult.staff && c.staffId === workforceResult.staff.staffId ? ' ← selected' : '';
+          console.log(`[StateCoordinator]     ${i + 1}. ${c.name} (${c.staffId}): ${c.currentWorkload}h current, ${c.freeCapacity}h free${marker}`);
+        });
+      }
 
       if (workforceResult.staff) {
         this._logEvent(createEvent(EventTypes.STAFF_SELECTED, {
@@ -224,7 +232,8 @@ class StateCoordinator {
           staffId: workforceResult.staff.staffId,
           staffName: workforceResult.staff.name,
           totalDurationHours: workforceResult.totalDuration,
-          reason: workforceResult.reason
+          reason: workforceResult.reason,
+          candidates: workforceResult.candidates
         }));
         console.log(`[StateCoordinator] ✅ Staff selected: ${workforceResult.staff.name} (${workforceResult.staff.staffId})`);
         console.log(`[StateCoordinator]   Reason: ${workforceResult.reason}`);
