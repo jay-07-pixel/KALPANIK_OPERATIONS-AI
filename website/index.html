@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPERATIONS — E‑commerce</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>OPERATIONS</h1>
+      <p class="tagline">Browse products · Select · Quantity · Place order · Agents handle the rest</p>
+    </header>
+
+    <main class="main">
+      <section class="card products-section">
+        <h2>Products</h2>
+        <div id="products-grid" class="products-grid">
+          <div class="muted">Loading products…</div>
+        </div>
+      </section>
+
+      <section class="card cart-section" id="cart-section" hidden>
+        <h2>Your order</h2>
+        <div id="cart-summary" class="cart-summary"></div>
+        <div class="row">
+          <label for="quantity">Quantity</label>
+          <input id="quantity" type="number" min="1" value="1" required />
+        </div>
+        <div class="row">
+          <label for="customerName">Your name</label>
+          <input id="customerName" type="text" value="Rajesh Kumar" placeholder="Your name" required />
+        </div>
+        <div class="row">
+          <label for="priority">Priority</label>
+          <select id="priority">
+            <option value="LOW">Low</option>
+            <option value="MEDIUM" selected>Medium</option>
+            <option value="HIGH">High</option>
+            <option value="URGENT">Urgent</option>
+          </select>
+        </div>
+        <div class="row actions">
+          <button type="button" id="place-order-btn">Place order</button>
+          <button type="button" id="clear-selection-btn" class="btn-secondary">Clear selection</button>
+        </div>
+      </section>
+
+      <section class="card result-section" id="result-section" hidden>
+        <h2>Order result</h2>
+        <p class="hint">Order Agent → Inventory → Tasks → Workforce → Critic</p>
+        <div id="result-content" class="result-content"></div>
+      </section>
+
+      <section class="card orders-section">
+        <h2>Recent orders</h2>
+        <button type="button" id="refresh-orders" class="btn-secondary">Refresh list</button>
+        <div id="orders-list" class="orders-list"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Backend: <span id="api-base">http://localhost:3000</span> · Same agentic flow as terminal/WhatsApp</p>
+    </footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

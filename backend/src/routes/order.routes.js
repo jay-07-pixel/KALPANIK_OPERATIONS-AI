@@ -15,6 +15,56 @@ const outputHandlers = require('../services/outputHandlers');
 const stateManager = require('../state/stateManager');
 
 /**
+ * GET /order/products
+ * List products (inventory) for e-commerce catalog
+ */
+router.get('/products', (req, res) => {
+  try {
+    const items = stateManager.getAllInventory();
+    const products = items.map(p => ({
+      productId: p.productId,
+      productName: p.productName,
+      unit: p.unit,
+      availableStock: p.availableStock ?? (p.currentStock - (p.reservedStock || 0)),
+      currentStock: p.currentStock,
+      category: p.category || ''
+    }));
+    res.status(200).json({ products, count: products.length });
+  } catch (error) {
+    console.error('[API] Error listing products:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /order/list
+ * List all orders (for website dashboard / order tracking)
+ */
+router.get('/list', (req, res) => {
+  try {
+    const orders = stateManager.getAllOrders();
+    const list = orders.map(o => {
+      const tasks = stateManager.getTasksByOrder(o.orderId);
+      return {
+        orderId: o.orderId,
+        customerName: o.customerName,
+        channel: o.channel,
+        status: o.status,
+        totalQuantity: o.totalQuantity,
+        assignedStaffName: o.assignedStaffName,
+        taskIds: o.taskIds,
+        taskCount: tasks.length,
+        createdAt: o.createdAt
+      };
+    });
+    res.status(200).json({ orders: list, count: list.length });
+  } catch (error) {
+    console.error('[API] Error listing orders:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /order/website
  * 
  * Accepts structured order from website form

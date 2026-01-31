@@ -13,6 +13,8 @@
 
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
+const path = require('path');
 const app = express();
 const stateCoordinator = require('./services/stateCoordinator');
 const orderAgent = require('./agents/orderAgent');
@@ -21,6 +23,7 @@ const stateManager = require('./state/stateManager');
 const { InventoryItem, StaffMember } = require('./models');
 
 // Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -97,6 +100,11 @@ const orderRoutes = require('./routes/order.routes');
 
 // Mount routes
 app.use('/order', orderRoutes);
+
+// Serve website (same agentic flow as WhatsApp/terminal)
+const websitePath = path.join(__dirname, '../../website');
+app.use(express.static(websitePath));
+app.get('/', (req, res) => res.sendFile(path.join(websitePath, 'index.html')));
 
 // Health check
 app.get('/health', (req, res) => {
