@@ -18,7 +18,8 @@ class WhatsAppParser {
   constructor() {
     this.groqApiKey = process.env.GROQ_API_KEY;
     this.groqApiUrl = 'https://api.groq.com/openai/v1/chat/completions';
-    this.model = 'mixtral-8x7b-32768'; // Fast, reliable model
+    // Use current Groq production model (mixtral-8x7b-32768 was deprecated)
+    this.model = process.env.GROQ_CHAT_MODEL || 'llama-3.1-8b-instant';
   }
 
   /**
@@ -45,7 +46,9 @@ class WhatsAppParser {
       
     } catch (error) {
       console.error('[WhatsAppParser] ❌ Groq API failed:', error.message);
-      
+      if (error.response?.data?.error?.message) {
+        console.error('[WhatsAppParser] Groq error:', error.response.data.error.message);
+      }
       // Fallback: Try simple regex-based parsing
       console.log('[WhatsAppParser] 🔄 Attempting fallback parsing...');
       return this._fallbackParse(message);
@@ -56,6 +59,9 @@ class WhatsAppParser {
    * Call Groq API with structured prompt
    */
   async _callGroqAPI(message) {
+    if (!this.groqApiKey || this.groqApiKey === 'your_groq_api_key' || this.groqApiKey.trim() === '') {
+      throw new Error('GROQ_API_KEY not set or invalid (use fallback or set in .env)');
+    }
     const prompt = this._buildPrompt(message);
     
     const response = await axios.post(

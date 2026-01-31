@@ -14,6 +14,12 @@
 
 const stateManager = require('../state/stateManager');
 const { EventTypes, createEvent } = require('../state/events');
+const orderCreation = require('./orderCreation');
+const decisionEngine = require('../agents/decisionEngine');
+const workforceAgent = require('../agents/workforceAgent');
+const coordinationAgent = require('../agents/coordinationAgent');
+const criticAgent = require('../agents/criticAgent');
+const { getTimeAndDeadlineFeasibility } = require('../utils/deadlineFeasibility');
 
 class StateCoordinator {
   constructor() {
@@ -152,31 +158,143 @@ class StateCoordinator {
         status: 'VALIDATED',
         productId: inventoryResult.productId || orderIntent.productId
       });
-      
-      // Step 3: Create Order
-      console.log(`[StateCoordinator] ➤ Step 3: Creating Order...`);
-      
-      // Step 4: Route to Decision Engine
+
+      // Step 3: Order Creation — ONLY when InventoryAgent returned AVAILABLE.
+      // We convert OrderIntent → confirmed Order here so that every Order in
+      // state has reserved inventory. No Order is created if inventory was
+      // NOT_AVAILABLE (flow already returned above).
+      console.log(`[StateCoordinator] ➤ Step 3: Creating Order (Intent → Order)...`);
+      const order = orderCreation.createOrderFromIntent(orderIntent, inventoryResult);
+      const { order: persistedOrder, event: orderCreatedEvent } = orderCreation.persistOrderAndPrepareEvent(order, orderIntent);
+      this._logEvent(orderCreatedEvent);
+      console.log(`[StateCoordinator] 📥 Event: ORDER_CREATED (order_confirmed)`);
+      console.log(`[StateCoordinator] ✅ Order created: ${persistedOrder.orderId} (from intent ${orderIntent.intentId})`);
+      stateManager.calculateSystemState();
+
+      // Step 4: Decision Engine — plan tasks for order (no staff assignment)
       console.log(`[StateCoordinator] ➤ Step 4: Routing to Decision Engine...`);
-      
-      // Step 5: Route to Workforce Agent
+      const tasks = decisionEngine.planTasksForOrder(persistedOrder, stateManager);
+      const taskIds = tasks.map(t => t.taskId);
+      for (const task of tasks) {
+        stateManager.addTask(task);
+      }
+      stateManager.updateOrder(persistedOrder.orderId, {
+        taskIds,
+        status: 'TASKS_PLANNED'
+      });
+      const planExplanation = decisionEngine.getPlanExplanation(persistedOrder);
+      const timeAndDeadline = getTimeAndDeadlineFeasibility(persistedOrder, tasks);
+
+      console.log(`[StateCoordinator] ✅ Tasks planned: ${taskIds.join(', ')}`);
+      console.log(`[StateCoordinator]   Sequence: ${planExplanation.sequence.join(' → ')}`);
+      console.log(`[StateCoordinator]   Time required: ${timeAndDeadline.totalHours.toFixed(2)}h total`);
+      timeAndDeadline.breakdown.forEach(b => {
+        console.log(`[StateCoordinator]     - ${b.taskId} (${b.taskType}): ${b.hours.toFixed(2)}h`);
+      });
+      if (timeAndDeadline.deadline) {
+        const feasibleStr = timeAndDeadline.feasible === true ? 'Yes' : timeAndDeadline.feasible === false ? 'No' : '—';
+        console.log(`[StateCoordinator]   Deadline: ${timeAndDeadline.deadline.toISOString()} | Feasible: ${feasibleStr}`);
+      } else {
+        console.log(`[StateCoordinator]   Deadline: not set (cannot verify)`);
+      }
+
+      this._logEvent(createEvent(EventTypes.TASKS_PLANNED, {
+        orderId: persistedOrder.orderId,
+        taskIds,
+        taskCount: tasks.length,
+        explanation: planExplanation,
+        timeRequiredHours: timeAndDeadline.totalHours,
+        timeBreakdown: timeAndDeadline.breakdown,
+        deadline: timeAndDeadline.deadline?.toISOString() ?? null,
+        deadlineFeasible: timeAndDeadline.feasible,
+        estimatedCompletion: timeAndDeadline.estimatedCompletion?.toISOString() ?? null,
+        deadlineMessage: timeAndDeadline.message
+      }));
+      stateManager.calculateSystemState();
+
+      // Step 5: Workforce Agent — select best staff for this order's tasks
       console.log(`[StateCoordinator] ➤ Step 5: Routing to Workforce Agent...`);
-      
-      // Step 6: Route to Coordination Agent
-      console.log(`[StateCoordinator] ➤ Step 6: Routing to Coordination Agent...`);
-      
-      // Step 7: Route to Critic Agent
+      const workforceResult = workforceAgent.selectBestStaffForOrder(persistedOrder, stateManager);
+      let assignedStaffId = null;
+      let assignedStaffName = null;
+
+      if (workforceResult.staff) {
+        this._logEvent(createEvent(EventTypes.STAFF_SELECTED, {
+          orderId: persistedOrder.orderId,
+          staffId: workforceResult.staff.staffId,
+          staffName: workforceResult.staff.name,
+          totalDurationHours: workforceResult.totalDuration,
+          reason: workforceResult.reason
+        }));
+        console.log(`[StateCoordinator] ✅ Staff selected: ${workforceResult.staff.name} (${workforceResult.staff.staffId})`);
+        console.log(`[StateCoordinator]   Reason: ${workforceResult.reason}`);
+
+        // Step 6: Coordination Agent — assign tasks to staff and update workload
+        console.log(`[StateCoordinator] ➤ Step 6: Routing to Coordination Agent...`);
+        const orderTasks = stateManager.getTasksByOrder(persistedOrder.orderId);
+        const assignResult = coordinationAgent.assignTasksToStaff(
+          orderTasks,
+          workforceResult.staff.staffId,
+          stateManager,
+          (ev) => {
+            this._logEvent(ev);
+            console.log(`[StateCoordinator] 📥 Event: ${ev.type}`);
+          }
+        );
+
+        if (assignResult.success) {
+          assignedStaffId = workforceResult.staff.staffId;
+          assignedStaffName = assignResult.staffName;
+          stateManager.updateOrder(persistedOrder.orderId, {
+            status: 'ASSIGNED',
+            assignedStaffId,
+            assignedStaffName
+          });
+          console.log(`[StateCoordinator] ✅ Tasks assigned to ${assignResult.staffName}; new workload: ${assignResult.newWorkload}h`);
+        } else {
+          console.log(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
+        }
+      } else {
+        console.log(`[StateCoordinator] ⚠️  No staff available: ${workforceResult.reason}`);
+      }
+
+      stateManager.calculateSystemState();
+
+      // Step 7: Critic Agent — validate plan (inventory reserved, staff capacity); approve or reject; if rejected, emit replan
       console.log(`[StateCoordinator] ➤ Step 7: Routing to Critic Agent...`);
-      
+      const orderForCritic = stateManager.getOrder(persistedOrder.orderId);
+      const criticResult = criticAgent.validateTaskPlan(orderForCritic, stateManager, (ev) => {
+        this._logEvent(ev);
+        console.log(`[StateCoordinator] 📥 Event: ${ev.type}`);
+      });
+
+      if (!criticResult.approved) {
+        console.log(`[StateCoordinator] ❌ Plan rejected: ${criticResult.reason}`);
+        console.log(`[StateCoordinator]   Issues: ${criticResult.issues.join(', ')}`);
+        console.log(`[StateCoordinator] 🛑 Replan requested; stopping before execution\n`);
+        return {
+          status: 'plan_rejected',
+          message: 'Critic rejected task plan; replan requested',
+          orderId: persistedOrder.orderId,
+          issues: criticResult.issues,
+          reason: criticResult.reason
+        };
+      }
+      console.log(`[StateCoordinator] ✅ Plan approved: ${criticResult.reason}`);
+
       // Step 8: Execute approved plan
       console.log(`[StateCoordinator] ➤ Step 8: Routing to Task Executor...`);
-      
-      // Update system state
-      stateManager.calculateSystemState();
-      
+
+      // System state already recalculated after order creation
       console.log(`[StateCoordinator] ✅ Order processing complete\n`);
-      
-      return { status: 'success', message: 'Order processing flow complete' };
+
+      return {
+        status: 'success',
+        message: 'Order created and processing flow complete',
+        orderId: persistedOrder.orderId,
+        order: persistedOrder,
+        orderIntent: orderIntent
+      };
       
     } catch (error) {
       console.error(`[StateCoordinator] ❌ Error in order processing:`, error.message);

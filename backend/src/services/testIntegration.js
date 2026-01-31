@@ -80,6 +80,7 @@ async function testWebsiteOrderFlow() {
   console.log('\n[Test] Result:');
   console.log('  Status:', result.status);
   console.log('  Message:', result.message);
+  if (result.orderId) console.log('  Order ID:', result.orderId);
   if (result.orderIntent) {
     console.log('  OrderIntent ID:', result.orderIntent.intentId);
     console.log('  Intent Status:', result.orderIntent.status);
@@ -87,11 +88,17 @@ async function testWebsiteOrderFlow() {
   if (result.reason) console.log('  Reason:', result.reason);
 
   const orderIntents = stateManager.getAllOrderIntents();
+  const orders = stateManager.getAllOrders();
   console.log('\n[Test] State Check:');
   console.log('  OrderIntents in state:', orderIntents.length);
+  console.log('  Orders in state:', orders.length);
   if (orderIntents.length > 0) {
     const latest = orderIntents[orderIntents.length - 1];
     console.log('  Latest Intent:', latest.intentId, '-', latest.productName, '-', latest.status);
+  }
+  if (orders.length > 0) {
+    const latestOrder = orders[orders.length - 1];
+    console.log('  Latest Order:', latestOrder.orderId, '-', latestOrder.status);
   }
 }
 
@@ -117,6 +124,7 @@ async function testWhatsAppOrderFlow() {
   console.log('\n[Test] Result:');
   console.log('  Status:', result.status);
   console.log('  Message:', result.message);
+  if (result.orderId) console.log('  Order ID:', result.orderId);
   if (result.orderIntent) {
     console.log('  OrderIntent ID:', result.orderIntent.intentId);
     console.log('  Intent Status:', result.orderIntent.status);
@@ -124,11 +132,17 @@ async function testWhatsAppOrderFlow() {
   if (result.reason) console.log('  Reason:', result.reason);
 
   const orderIntents = stateManager.getAllOrderIntents();
+  const orders = stateManager.getAllOrders();
   console.log('\n[Test] State Check:');
   console.log('  OrderIntents in state:', orderIntents.length);
+  console.log('  Orders in state:', orders.length);
   if (orderIntents.length > 0) {
     const latest = orderIntents[orderIntents.length - 1];
     console.log('  Latest Intent:', latest.intentId, '-', latest.productName, '-', latest.status);
+  }
+  if (orders.length > 0) {
+    const latestOrder = orders[orders.length - 1];
+    console.log('  Latest Order:', latestOrder.orderId, '-', latestOrder.status);
   }
 }
 
@@ -180,6 +194,11 @@ async function testSystemState() {
   intents.forEach(intent => {
     console.log(`  - ${intent.intentId}: ${intent.productName} (${intent.quantity} ${intent.unit}) - ${intent.status}`);
   });
+  console.log('\nOrders:');
+  const orders = stateManager.getAllOrders();
+  orders.forEach(o => {
+    console.log(`  - ${o.orderId}: ${o.customerName} - ${o.status} - ${o.totalQuantity} items`);
+  });
   console.log('\nInventory:');
   const inv = stateManager.getAllInventory();
   inv.forEach(item => {
@@ -219,8 +238,8 @@ async function runTests() {
   console.log('\n' + '='.repeat(60));
   console.log('✅ ALL INTEGRATION TESTS COMPLETED');
   console.log('='.repeat(60));
-  console.log('\nIntegration: Order Agent → Inventory Agent → State Manager');
-  console.log('Next: Implement Order Creation & Decision Engine\n');
+  console.log('\nIntegration: Order Agent → Inventory Agent → Order Creation → Decision Engine → State Manager');
+  console.log('Next: Implement Workforce Agent & Coordination Agent\n');
 }
 
 runTests().catch(console.error);

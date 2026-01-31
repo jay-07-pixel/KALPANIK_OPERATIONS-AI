@@ -55,13 +55,14 @@ class InputGateway {
     });
     
     console.log('[InputGateway] ➤ Routing to State Coordinator\n');
-    await stateCoordinator.handleEvent(event);
+    const coordinatorResult = await stateCoordinator.handleEvent(event);
     
     return {
       success: true,
       channel: 'website',
       message: 'Order received and processing',
-      data: normalizedData
+      data: normalizedData,
+      result: coordinatorResult
     };
   }
 
@@ -98,13 +99,14 @@ class InputGateway {
     });
     
     console.log('[InputGateway] ➤ Routing to State Coordinator\n');
-    await stateCoordinator.handleEvent(event);
+    const coordinatorResult = await stateCoordinator.handleEvent(event);
     
     return {
       success: true,
       channel: 'whatsapp',
       message: 'Message received and processing',
-      data: normalizedData
+      data: normalizedData,
+      result: coordinatorResult
     };
   }
 

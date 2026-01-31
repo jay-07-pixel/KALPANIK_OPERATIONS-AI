@@ -11,6 +11,8 @@
 const express = require('express');
 const router = express.Router();
 const inputGateway = require('../services/inputGateway');
+const outputHandlers = require('../services/outputHandlers');
+const stateManager = require('../state/stateManager');
 
 /**
  * POST /order/website
@@ -35,14 +37,9 @@ router.post('/website', async (req, res) => {
     console.log('\n[API] POST /order/website');
     
     const result = await inputGateway.processWebsiteOrder(req.body);
-    
-    res.status(200).json({
-      success: true,
-      message: 'Order received successfully',
-      orderId: result.data.orderId || 'pending', // Will be assigned by Order Agent
-      channel: 'website',
-      timestamp: new Date().toISOString()
-    });
+    const coordinatorResult = result.result || {};
+    const responseBody = outputHandlers.sendWebsiteUpdate(coordinatorResult, stateManager);
+    res.status(200).json(responseBody);
   } catch (error) {
     console.error('[API] Error processing website order:', error.message);
     
@@ -72,13 +69,15 @@ router.post('/whatsapp', async (req, res) => {
     console.log('\n[API] POST /order/whatsapp');
     
     const result = await inputGateway.processWhatsAppOrder(req.body);
+    const coordinatorResult = result.result || {};
+    const customerId = result.data?.customerId || req.body?.phone || req.body?.from;
+    outputHandlers.sendWhatsAppUpdate(coordinatorResult, stateManager, customerId);
     
+    const responseBody = outputHandlers.buildWebsiteResponse(coordinatorResult, stateManager, 'whatsapp');
     res.status(200).json({
-      success: true,
-      message: 'Message received successfully',
-      note: 'Message will be parsed and processed',
+      ...responseBody,
       channel: 'whatsapp',
-      timestamp: new Date().toISOString()
+      note: 'Update sent to customer (mock: console log)'
     });
   } catch (error) {
     console.error('[API] Error processing WhatsApp message:', error.message);

@@ -138,7 +138,7 @@
 │ OUTPUTS SENT                                                    │
 │                                                                 │
 │ • WhatsApp to customer                                          │
-│   "✅ Order confirmed! Ready by today 2:30pm"                   │
+│   "✅ Order confirmed! Ready by today 2:30pm"                  │
 │                                                                 │
 │ • Staff App notification to Priya                               │
 │                                                                 │

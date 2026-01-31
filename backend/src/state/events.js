@@ -45,6 +45,7 @@ const EventTypes = {
   // Critic Agent Events
   PLAN_APPROVED: 'PLAN_APPROVED',                 // Plan validated and approved
   PLAN_REJECTED: 'PLAN_REJECTED',                 // Plan rejected (constraints violated)
+  REPLAN_REQUESTED: 'REPLAN_REQUESTED',           // Replan requested after rejection
   
   // Task Executor Events
   TASKS_CREATED: 'TASKS_CREATED',                 // Tasks persisted to state

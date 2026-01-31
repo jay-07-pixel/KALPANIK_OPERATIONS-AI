@@ -21,6 +21,7 @@ class OrderAgent {
     // Mock customer database (for MVP)
     this.mockCustomers = new Map([
       ['+91-98765-43210', { id: 'CUST-001', name: 'Rajesh Kumar' }],
+      ['+919876543210', { id: 'CUST-001', name: 'Rajesh Kumar' }],
       ['+91-98765-11111', { id: 'CUST-002', name: 'Priya Sharma' }],
       ['+91-98765-99999', { id: 'CUST-003', name: 'Amit Patel' }],
       ['user123', { id: 'CUST-004', name: 'Website User 123' }]
