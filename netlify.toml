@@ -1,0 +1,9 @@
+# Netlify — Frontend deployment
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  publish = "website"
+  command = "node scripts/inject-env.js"
+
+# Required: Set BACKEND_URL in Netlify Site settings → Environment variables
+# Example: BACKEND_URL = https://your-app.railway.app

@@ -20,6 +20,7 @@ const workforceAgent = require('../agents/workforceAgent');
 const coordinationAgent = require('../agents/coordinationAgent');
 const criticAgent = require('../agents/criticAgent');
 const { getTimeAndDeadlineFeasibility } = require('../utils/deadlineFeasibility');
+const delayPredictor = require('./delayPredictor');
 
 class StateCoordinator {
   constructor() {
@@ -229,7 +230,8 @@ class StateCoordinator {
         const feasibleStr = timeAndDeadline.feasible === true ? 'Yes' : timeAndDeadline.feasible === false ? 'No' : '—';
         this._runLog(`[StateCoordinator]   Deadline: ${timeAndDeadline.deadline.toISOString()} | Feasible: ${feasibleStr}`);
       } else {
-        this._runLog(`[StateCoordinator]   Deadline: not set (cannot verify)`);
+        const rawInfo = timeAndDeadline.deadlineRaw ? ` (raw: "${timeAndDeadline.deadlineRaw}")` : '';
+        this._runLog(`[StateCoordinator]   Deadline: not set${rawInfo} (cannot verify)`);
       }
 
       this._setSummary({
@@ -309,16 +311,40 @@ class StateCoordinator {
             assignedStaffName
           });
           this._runLog(`[StateCoordinator] ✅ Tasks assigned to ${assignResult.staffName}; new workload: ${assignResult.newWorkload}h`);
+
+          const delayPred = delayPredictor.predict(persistedOrder, {
+            timeRequiredHours: timeAndDeadline.totalHours,
+            staffWorkload: assignResult.newWorkload,
+            numCandidates: workforceResult.candidates?.length ?? 0,
+            numTasks: tasks.length
+          });
+          this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred.message}`);
           this._setSummary({
             steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'ok', detail: `Assigned to ${assignResult.staffName}; workload ${assignResult.newWorkload}h` }],
-            coordination: { assignedStaffName: assignResult.staffName, newWorkload: assignResult.newWorkload }
+            coordination: { assignedStaffName: assignResult.staffName, newWorkload: assignResult.newWorkload },
+            delayRisk: { risk: delayPred.risk, delayed: delayPred.delayed, message: delayPred.message }
           });
         } else {
           this._runLog(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
-          this._setSummary({ steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'warn', detail: assignResult.message }] });
+          const delayPred2 = delayPredictor.predict(persistedOrder, {
+            timeRequiredHours: timeAndDeadline.totalHours,
+            staffWorkload: workforceResult.staff?.currentWorkload ?? 0,
+            numCandidates: workforceResult.candidates?.length ?? 0,
+            numTasks: tasks.length
+          });
+          this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred2.message}`);
+          this._setSummary({ steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'warn', detail: assignResult.message }], delayRisk: { risk: delayPred2.risk, delayed: delayPred2.delayed, message: delayPred2.message } });
         }
       } else {
         this._runLog(`[StateCoordinator] ⚠️  No staff available: ${workforceResult.reason}`);
+        const delayPred3 = delayPredictor.predict(persistedOrder, {
+          timeRequiredHours: timeAndDeadline.totalHours,
+          staffWorkload: 0,
+          numCandidates: workforceResult.candidates?.length ?? 0,
+          numTasks: tasks.length
+        });
+        this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred3.message}`);
+        this._setSummary({ delayRisk: { risk: delayPred3.risk, delayed: delayPred3.delayed, message: delayPred3.message } });
       }
 
       stateManager.calculateSystemState();

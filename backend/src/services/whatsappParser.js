@@ -120,7 +120,7 @@ Extract the following fields:
 - quantity: The number of items requested (number)
 - unit: Unit of measurement like "boxes", "pieces", "kg" (string)
 - priority: Order urgency - "LOW", "MEDIUM", "HIGH", or "URGENT" (string)
-- deadline: Any mentioned deadline or date (string, or null if not mentioned)
+- deadline: CRITICAL - Any mentioned deadline/date. Extract as a short string: "tomorrow", "tomorrow 3pm", "by tomorrow", "today", "3pm", "Friday", etc. Use null ONLY if absolutely no deadline mentioned.
 
 Rules:
 1. If product name is unclear, use best guess
@@ -131,7 +131,8 @@ Rules:
    - "normal", "regular" → "MEDIUM"
    - Default → "MEDIUM"
 4. If unit is not mentioned, use "pieces"
-5. Return ONLY valid JSON, no explanations
+5. For deadline: Extract EXACTLY what the user said - "tomorrow", "by tomorrow", "tomorrow 3pm", "by 5pm", "Friday" - never null if user mentioned a time/date
+6. Return ONLY valid JSON, no explanations
 
 Required JSON format:
 {
@@ -145,15 +146,25 @@ Required JSON format:
 
   /**
    * Validate and clean Groq response
+   * Handles LLM returning deadline in various formats: string, object, dueDate, etc.
    */
   _validateAndClean(parsed) {
-    // Ensure required structure
+    // Extract deadline from various LLM output formats
+    let deadline = parsed.deadline ?? parsed.dueDate ?? parsed.deliveryDate ?? parsed.date ?? null;
+    if (deadline && typeof deadline === 'object') {
+      deadline = deadline.date ?? deadline.value ?? deadline.text ?? JSON.stringify(deadline);
+    }
+    if (deadline && typeof deadline !== 'string') {
+      deadline = String(deadline).trim() || null;
+    }
+    if (deadline && deadline.trim() === '') deadline = null;
+
     const result = {
       product: parsed.product || null,
       quantity: parsed.quantity ? parseInt(parsed.quantity) : null,
       unit: parsed.unit || 'pieces',
       priority: this._normalizePriority(parsed.priority),
-      deadline: parsed.deadline || null
+      deadline: deadline || null
     };
 
     // Validate quantity
@@ -234,20 +245,27 @@ Required JSON format:
       result.priority = 'HIGH';
     }
 
-    // Extract deadline
+    // Extract deadline (fallback when LLM fails)
     const deadlinePatterns = [
-      /by\s+(tomorrow|today|tonight)/i,
-      /by\s+(\d{1,2}(?:am|pm|:\d{2}))/i,
-      /by\s+([\w\s]+?)(?:\.|!|$)/i,
-      /(\d{1,2}\/\d{1,2})/,
-      /(tomorrow|today)/i
+      /(?:by|before|until|due|need\s+by|delivery\s+by)\s+(tomorrow(?:\s+\d{1,2}\s*(?:am|pm)?)?)/i,
+      /(?:by|before|until)\s+(\d{1,2}\s*(?:am|pm)?)/i,
+      /(?:by|before|until)\s+([\w\s]+?)(?:\.|!|$)/i,
+      /(tomorrow(?:\s+\d{1,2}\s*(?:am|pm)?)?)/i,
+      /(today|tonight)/i,
+      /(\d{1,2}\s*(?:am|pm))/i,
+      /(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/,
+      /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+      /(next\s+week|this\s+week)/i
     ];
 
     for (const pattern of deadlinePatterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
-        result.deadline = match[1].trim();
-        break;
+        const extracted = match[1].trim();
+        if (extracted.length >= 2) {
+          result.deadline = extracted;
+          break;
+        }
       }
     }
 

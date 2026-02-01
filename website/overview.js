@@ -7,6 +7,7 @@
 // Use same origin when served from backend (e.g. http://localhost:3000); fallback for file://
 function getApiBase() {
   if (typeof window === 'undefined') return '';
+  if (window.API_BASE) return window.API_BASE;
   const origin = window.location.origin;
   if (origin && origin !== 'null' && (origin.startsWith('http:') || origin.startsWith('https:')))
     return origin;
@@ -196,6 +197,7 @@ function closeModal(id) {
 }
 
 function getBase() {
+  if (typeof window !== 'undefined' && window.API_BASE) return window.API_BASE;
   var o = typeof window !== 'undefined' && window.location.origin;
   if (o && o !== 'null' && (o.startsWith('http:') || o.startsWith('https:')))
     return o;

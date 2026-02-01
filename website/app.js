@@ -3,7 +3,7 @@
  * Products listed → Select product → Quantity → Place order → Agents handle the rest
  */
 
-const API_BASE = '';
+const API_BASE = (typeof window !== 'undefined' && window.API_BASE) || '';
 
 let selectedProduct = null; // { productId, productName, unit, availableStock }
 
@@ -198,4 +198,4 @@ async function loadOrdersList() {
 }
 
 loadOrdersList();
-document.getElementById('api-base').textContent = window.location.origin || 'http://localhost:3000';
+document.getElementById('api-base').textContent = API_BASE || window.location.origin || 'http://localhost:3000';

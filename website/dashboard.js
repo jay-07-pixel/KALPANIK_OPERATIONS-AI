@@ -3,7 +3,7 @@
  * Fetches last-run summary and runLog; renders structured cards + optional terminal log
  */
 
-const API_BASE = '';
+const API_BASE = (typeof window !== 'undefined' && window.API_BASE) || '';
 const summaryContainer = document.getElementById('summary-container');
 const emptyState = document.getElementById('empty-state');
 const terminalOutput = document.getElementById('terminal-output');
@@ -39,8 +39,10 @@ function renderOverview(summary) {
       ${summary.productName ? `<dt>Product</dt><dd>${escapeHtml(summary.productName)}</dd>` : ''}
       ${summary.quantity != null ? `<dt>Quantity</dt><dd>${escapeHtml(summary.quantity)} ${escapeHtml(summary.unit || '')}</dd>` : ''}
       ${summary.inventory ? `<dt>Inventory</dt><dd><span class="badge badge-${summary.inventory.status === 'AVAILABLE' ? 'success' : 'error'}">${escapeHtml(summary.inventory.status)}</span>${summary.inventory.reason ? ' ' + escapeHtml(summary.inventory.reason) : ''}</dd>` : ''}
+      ${summary.delayRisk ? `<dt>Delay Risk</dt><dd><span class="badge badge-${summary.delayRisk.delayed ? 'error' : 'success'}">${(summary.delayRisk.risk * 100).toFixed(0)}%</span> ${summary.delayRisk.delayed ? 'Likely delayed' : 'On track'}</dd>` : ''}
     </dl>
     ${customerServiceMsg}
+    ${summary.delayRisk && summary.delayRisk.message ? `<p class="delay-risk-msg">${escapeHtml(summary.delayRisk.message)}</p>` : ''}
   `;
 }
 
@@ -227,4 +229,4 @@ refreshBtn.addEventListener('click', loadLastRun);
 toggleLogBtn.addEventListener('click', toggleTerminalLog);
 
 loadLastRun();
-document.getElementById('api-base').textContent = window.location.origin || 'http://localhost:3000';
+document.getElementById('api-base').textContent = API_BASE || window.location.origin || 'http://localhost:3000';

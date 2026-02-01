@@ -7,39 +7,86 @@
  */
 
 /**
+ * Normalize common deadline phrasings before parsing.
+ * Handles: "by tomorrow" -> "tomorrow", "by 3pm" -> "today 3pm", etc.
+ */
+function normalizeDeadlineInput(deadlineStr) {
+  if (!deadlineStr || typeof deadlineStr !== 'string') return null;
+  let s = deadlineStr.trim().toLowerCase();
+  if (!s) return null;
+
+  // Strip prefixes: "by ", "before ", "until ", "due ", "need by ", "delivery by "
+  s = s.replace(/^(by|before|until|due|need\s+by|delivery\s+by|in)\s+/i, '').trim();
+  return s || null;
+}
+
+/**
  * Parse deadline string to a Date, or null if unparseable.
- * Supports: ISO string, "tomorrow", "tomorrow 3pm" (case-insensitive).
+ * Supports: ISO string, "tomorrow", "tomorrow 3pm", "by tomorrow", "today", "tonight", "by 3pm".
  *
  * @param {string|null|undefined} deadlineStr
  * @returns {Date|null}
  */
 function parseDeadline(deadlineStr) {
-  if (!deadlineStr || typeof deadlineStr !== 'string') return null;
-  const s = deadlineStr.trim().toLowerCase();
-  if (!s) return null;
+  const raw = normalizeDeadlineInput(deadlineStr);
+  if (!raw) return null;
 
-  // ISO or other date string
-  const asDate = new Date(deadlineStr);
+  const s = raw.trim().toLowerCase();
+
+  // ISO or other date string (e.g. "2026-02-01T15:00:00Z")
+  const asDate = new Date(raw);
   if (!Number.isNaN(asDate.getTime())) return asDate;
 
-  // "tomorrow" or "tomorrow 3pm"
   const now = new Date();
+  const today = new Date(now);
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  // "tomorrow" or "by tomorrow"
   if (s === 'tomorrow') {
     tomorrow.setUTCHours(23, 59, 59, 999);
     return tomorrow;
   }
-  const match = s.match(/tomorrow\s+(\d{1,2})\s*(am|pm)?/i);
-  if (match) {
-    let hour = parseInt(match[1], 10);
-    const ampm = (match[2] || '').toLowerCase();
+
+  // "tomorrow 3pm", "tomorrow 10am", "tomorrow by 3pm"
+  const tomorrowTimeMatch = s.match(/tomorrow\s+(?:by\s+)?(\d{1,2})\s*(am|pm)?/i);
+  if (tomorrowTimeMatch) {
+    let hour = parseInt(tomorrowTimeMatch[1], 10);
+    const ampm = (tomorrowTimeMatch[2] || '').toLowerCase();
     if (ampm === 'pm' && hour < 12) hour += 12;
     if (ampm === 'am' && hour === 12) hour = 0;
     tomorrow.setUTCHours(hour, 0, 0, 0);
     return tomorrow;
   }
+
+  // "today", "tonight"
+  if (s === 'today' || s === 'tonight') {
+    today.setUTCHours(23, 59, 59, 999);
+    return today;
+  }
+
+  // "3pm", "10am", "by 3pm" (today at that time)
+  const todayTimeMatch = s.match(/^(\d{1,2})\s*(am|pm)?$/i);
+  if (todayTimeMatch) {
+    let hour = parseInt(todayTimeMatch[1], 10);
+    const ampm = (todayTimeMatch[2] || '').toLowerCase();
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+    today.setUTCHours(hour, 0, 0, 0);
+    // If time already passed today, assume tomorrow
+    if (today.getTime() <= now.getTime()) {
+      tomorrow.setUTCHours(hour, 0, 0, 0);
+      return tomorrow;
+    }
+    return today;
+  }
+
+  // Try native Date parse for "Friday", "next week", etc.
+  const fallback = new Date(raw);
+  if (!Number.isNaN(fallback.getTime()) && fallback.getTime() > now.getTime()) {
+    return fallback;
+  }
+
   return null;
 }
 
@@ -118,6 +165,7 @@ function getTimeAndDeadlineFeasibility(order, tasks) {
 
 module.exports = {
   parseDeadline,
+  normalizeDeadlineInput,
   getTimeRequired,
   checkFeasibility,
   getTimeAndDeadlineFeasibility

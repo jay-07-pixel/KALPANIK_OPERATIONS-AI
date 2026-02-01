@@ -1,0 +1,13 @@
+{
+  "name": "kalpanik-operations-ai",
+  "version": "1.0.0",
+  "description": "KALPANIK Operations AI — Agentic order management with delay prediction",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
