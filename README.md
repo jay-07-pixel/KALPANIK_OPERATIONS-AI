@@ -17,14 +17,51 @@ Agentic AI system for MSME operations — order management, workforce scheduling
 
 ## Quick start
 
+### 1. Start the backend
+
 ```bash
-# Install and run backend (serves API + frontend)
 cd backend
 npm install
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — Shop, Dashboard, Agents Log.
+The server runs on [http://localhost:3000](http://localhost:3000).
+
+### 2. Access the app
+
+- **Shop:** [http://localhost:3000](http://localhost:3000) — Browse products, place orders
+- **Dashboard Overview:** [http://localhost:3000/overview.html](http://localhost:3000/overview.html)
+- **Agents Log:** [http://localhost:3000/dashboard.html](http://localhost:3000/dashboard.html)
+
+### 3. Test WhatsApp orders (Insomnia / Postman)
+
+**Endpoint:** `POST http://localhost:3000/order/whatsapp`
+
+**Headers:** `Content-Type: application/json`
+
+**Request body (JSON):**
+
+```json
+{
+  "from": "+919876543210",
+  "message": "Hi, I need 10 boxes of Widget A by tomorrow 3 pm"
+}
+```
+
+Or use `phone` instead of `from`:
+
+```json
+{
+  "phone": "+919876543210",
+  "message": "I need 15 boxes of Widget B. Urgent!"
+}
+```
+
+**Notes:**
+- `from` or `phone` — Required
+- `message` or `text` — Required (raw WhatsApp text)
+- `name` — Optional
+- The LLM parses product, quantity, deadline, and priority from the message
 
 ---
 
