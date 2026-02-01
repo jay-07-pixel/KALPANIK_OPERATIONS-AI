@@ -15,6 +15,13 @@ Agentic AI system for MSME operations — order management, workforce scheduling
 
 ---
 
+## Live deployment
+
+- **Website:** [https://kalpanikoperations-ai-production.up.railway.app/](https://kalpanikoperations-ai-production.up.railway.app/)
+- **WhatsApp testing:** [https://kalpanikoperations-ai-production.up.railway.app/order/whatsapp](https://kalpanikoperations-ai-production.up.railway.app/order/whatsapp) — `POST` JSON with `from`/`phone` and `message`
+
+---
+
 ## Quick start
 
 ### 1. Start the backend
@@ -35,7 +42,8 @@ The server runs on [http://localhost:3000](http://localhost:3000).
 
 ### 3. Test WhatsApp orders (Insomnia / Postman)
 
-**Endpoint:** `POST http://localhost:3000/order/whatsapp`
+**Local:** `POST http://localhost:3000/order/whatsapp`  
+**Deployed:** `POST https://kalpanikoperations-ai-production.up.railway.app/order/whatsapp`
 
 **Headers:** `Content-Type: application/json`
 
@@ -65,12 +73,11 @@ Or use `phone` instead of `from`:
 
 ---
 
-## Deploy (Netlify + Railway)
+## Deploy (Railway only)
 
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step:
+**One deployment does everything.** The backend serves the frontend: Express serves the `website/` folder as static files, so when you deploy the repo to Railway you get both the API and the shop/dashboard at the same URL.
 
-- **Frontend:** Netlify (static site)
-- **Backend:** Railway (Node.js API)
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step.
 
 ---
 
@@ -78,13 +85,11 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step:
 
 ```
 OPERATIONS/
-├── backend/          # Node.js API
+├── backend/          # Node.js API (serves website/ as static)
 │   ├── src/          # Agents, routes, services
 │   └── ml/           # Delay predictor (Olist dataset, model)
-├── website/          # Static frontend
+├── website/          # Static frontend (served by backend)
 ├── docs/             # Architecture docs
-├── scripts/          # Build scripts (Netlify env injection)
-├── netlify.toml      # Netlify config
 ├── railway.json      # Railway config
 └── DEPLOYMENT.md     # Deploy guide
 ```
