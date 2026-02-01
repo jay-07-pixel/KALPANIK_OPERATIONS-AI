@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPERATIONS — Dashboard (terminal output)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>OPERATIONS — Dashboard</h1>
+      <p class="tagline">Structured view of last order flow</p>
+      <nav class="nav">
+        <a href="overview.html">← Dashboard Overview</a>
+        <a href="index.html">Shop</a>
+      </nav>
+    </header>
+
+    <main class="main">
+      <!-- Structured summary cards -->
+      <div id="summary-container" class="summary-container" aria-hidden="true">
+        <section class="card summary-card summary-overview" id="card-overview">
+          <h2>Order overview</h2>
+          <div id="summary-overview" class="summary-body"></div>
+        </section>
+        <section class="card summary-card summary-steps" id="card-steps">
+          <h2>Pipeline steps</h2>
+          <div id="summary-steps" class="summary-body"></div>
+        </section>
+        <section class="card summary-card summary-tasks" id="card-tasks">
+          <h2>Tasks & time</h2>
+          <div id="summary-tasks" class="summary-body"></div>
+        </section>
+        <section class="card summary-card summary-workforce" id="card-workforce">
+          <h2>Workforce</h2>
+          <div id="summary-workforce" class="summary-body"></div>
+        </section>
+      </div>
+
+      <!-- Empty state when no run -->
+      <div id="empty-state" class="card empty-state">
+        <p>No run yet. Place an order from <a href="index.html">Shop</a> to see the dashboard.</p>
+      </div>
+
+      <!-- Raw terminal log (collapsible) -->
+      <section class="card dashboard-section">
+        <div class="dashboard-toolbar">
+          <button type="button" id="refresh-run">Refresh</button>
+          <span class="muted" id="run-info">Place an order from Shop to see run log here.</span>
+          <button type="button" id="toggle-log" class="toggle-log" aria-expanded="false">Show terminal log</button>
+        </div>
+        <pre id="terminal-output" class="terminal-output" hidden></pre>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Backend: <span id="api-base">http://localhost:3000</span> · GET /order/last-run</p>
+    </footer>
+  </div>
+  <script src="dashboard.js"></script>
+</body>
+</html>

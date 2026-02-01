@@ -129,10 +129,16 @@ function formatResult(data, ok) {
   const lines = [];
   if (!ok) {
     lines.push(`<span class="error">Error: ${data.error || data.message || 'Unknown'}</span>`);
+    if (data.customerServiceMessage) {
+      lines.push(`<div class="customer-service">${data.customerServiceMessage}</div>`);
+    }
     return lines.map(l => `<div class="line">${l}</div>`).join('');
   }
 
   lines.push(`<span class="${data.success ? 'success' : 'muted'}">${data.message || data.rawStatus}</span>`);
+  if (data.customerServiceMessage) {
+    lines.push(`<div class="customer-service">${data.customerServiceMessage}</div>`);
+  }
   if (data.orderId) {
     lines.push(`<span class="label">Order ID:</span> ${data.orderId}`);
     lines.push(`<span class="label">Status:</span> ${data.orderStatus || data.rawStatus}`);

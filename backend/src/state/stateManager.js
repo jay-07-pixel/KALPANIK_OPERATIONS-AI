@@ -191,6 +191,14 @@ class StateManager {
     return staff;
   }
 
+  deleteStaff(staffId) {
+    const staff = this.staff.get(staffId);
+    if (!staff) throw new Error(`Staff ${staffId} not found`);
+    const deleted = this.staff.delete(staffId);
+    if (deleted) this._log('STAFF_DELETED', { staffId });
+    return deleted;
+  }
+
   getAvailableStaff() {
     return this.getAllStaff().filter(s => 
       s.status === 'ONLINE' && s.getRemainingCapacity() > 0

@@ -77,6 +77,15 @@ function buildStatusPayload(coordinatorResult, stateManager) {
  */
 function buildWebsiteResponse(coordinatorResult, stateManager, channel = 'website') {
   const payload = buildStatusPayload(coordinatorResult, stateManager);
+  const isRejectedStock =
+    payload.status === 'rejected' &&
+    /insufficient|stock|not available|INSUFFICIENT_STOCK/i.test(
+      coordinatorResult.reason || coordinatorResult.message || payload.message || ''
+    );
+  const customerServiceMessage = isRejectedStock
+    ? 'Call customer service: 9822961688'
+    : null;
+
   return {
     success: payload.success,
     message: payload.message,
@@ -92,7 +101,8 @@ function buildWebsiteResponse(coordinatorResult, stateManager, channel = 'websit
     estimatedCompletion: payload.estimatedCompletion ?? null,
     deadlineMessage: payload.deadlineMessage ?? null,
     timestamp: payload.timestamp,
-    rawStatus: payload.status
+    rawStatus: payload.status,
+    customerServiceMessage
   };
 }
 

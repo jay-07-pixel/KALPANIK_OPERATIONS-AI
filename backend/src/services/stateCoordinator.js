@@ -24,6 +24,8 @@ const { getTimeAndDeadlineFeasibility } = require('../utils/deadlineFeasibility'
 class StateCoordinator {
   constructor() {
     this.eventLog = [];
+    this.lastRunLog = [];
+    this.lastRunSummary = null; // Structured summary for dashboard (order flow steps, tasks, staff, etc.)
     this.isProcessing = false;
     
     // Agent placeholders (will be wired up later)
@@ -88,43 +90,70 @@ class StateCoordinator {
   }
 
   /**
+   * Append a line to lastRunLog (for dashboard) and console
+   */
+  _runLog(text, type = 'info') {
+    this.lastRunLog.push({ type, text });
+    if (type === 'error') console.error(text);
+    else console.log(text);
+  }
+
+  getLastRunLog() {
+    return this.lastRunLog || [];
+  }
+
+  /**
+   * Get structured summary of last order run (for meaningful dashboard)
+   */
+  getLastRunSummary() {
+    return this.lastRunSummary;
+  }
+
+  _setSummary(partial) {
+    this.lastRunSummary = { ...(this.lastRunSummary || {}), ...partial };
+  }
+
+  /**
    * ORDER_RECEIVED event handler
    * Orchestrates the full order processing flow
    */
   async _handleOrderReceived(event) {
     const { channel, data } = event.data;
-    
-    console.log(`\n[StateCoordinator] 🎯 ORDER_RECEIVED from ${channel}`);
-    console.log(`[StateCoordinator] Data:`, JSON.stringify(data, null, 2));
+    this.lastRunLog = [];
+    this.lastRunSummary = { channel, timestamp: new Date().toISOString(), status: null, steps: [] };
+
+    this._runLog(`\n[StateCoordinator] 🎯 ORDER_RECEIVED from ${channel}`);
+    this._runLog(`[StateCoordinator] Data: ${JSON.stringify(data, null, 2)}`);
 
     try {
       // Step 1: Route to Order Agent
-      console.log(`[StateCoordinator] ➤ Step 1: Routing to Order Agent...`);
+      this._runLog(`[StateCoordinator] ➤ Step 1: Routing to Order Agent...`);
       if (!this.orderAgent) {
-        console.log(`[StateCoordinator] ⚠️  Order Agent not wired yet`);
+        this._runLog(`[StateCoordinator] ⚠️  Order Agent not wired yet`);
         return { status: 'pending', message: 'Order Agent not available' };
       }
       
-      // Process order and create OrderIntent
       const orderIntent = await this.orderAgent.processOrder(data, channel);
-      console.log(`[StateCoordinator] ✅ OrderIntent created: ${orderIntent.intentId}`);
-      
-      // Validate intent
+      this._runLog(`[StateCoordinator] ✅ OrderIntent created: ${orderIntent.intentId}`);
+      this._setSummary({
+        orderIntentId: orderIntent.intentId,
+        customerName: orderIntent.customerName,
+        productName: orderIntent.productName,
+        quantity: orderIntent.quantity,
+        unit: orderIntent.unit,
+        steps: [...(this.lastRunSummary.steps || []), { step: 1, name: 'Order Agent', status: 'ok', detail: `Intent ${orderIntent.intentId} created` }]
+      });
       const validation = this.orderAgent.validateIntent(orderIntent);
       if (!validation.isValid) {
-        console.log(`[StateCoordinator] ⚠️  OrderIntent has warnings:`, validation.warnings);
-        // Continue anyway - warnings don't stop processing
+        this._runLog(`[StateCoordinator] ⚠️  OrderIntent has warnings: ${JSON.stringify(validation.warnings)}`);
       }
-      
-      // Save OrderIntent to state
       stateManager.addOrderIntent(orderIntent);
-      console.log(`[StateCoordinator] ✅ OrderIntent saved to state`);
+      this._runLog(`[StateCoordinator] ✅ OrderIntent saved to state`);
       
-      // Step 2: Route to Inventory Agent
-      console.log(`[StateCoordinator] ➤ Step 2: Routing to Inventory Agent...`);
+      this._runLog(`[StateCoordinator] ➤ Step 2: Routing to Inventory Agent...`);
       if (!this.inventoryAgent) {
-        console.log(`[StateCoordinator] ⚠️  Inventory Agent not implemented yet`);
-        console.log(`[StateCoordinator] 🛑 Stopping here until Inventory Agent is ready\n`);
+        this._runLog(`[StateCoordinator] ⚠️  Inventory Agent not implemented yet`);
+        this._runLog(`[StateCoordinator] 🛑 Stopping here until Inventory Agent is ready\n`);
         return { 
           status: 'partial', 
           message: 'OrderIntent created, waiting for Inventory Agent',
@@ -132,18 +161,22 @@ class StateCoordinator {
         };
       }
 
-      // Register listener for events emitted by Inventory Agent
       this.inventoryAgent.onEmit((ev) => {
         this._logEvent(ev);
-        console.log(`[StateCoordinator] 📥 Event from Inventory Agent: ${ev.type}`);
+        this._runLog(`[StateCoordinator] 📥 Event from Inventory Agent: ${ev.type}`);
       });
 
       const inventoryResult = await this.inventoryAgent.checkAvailability(orderIntent);
 
       if (inventoryResult.status === 'NOT_AVAILABLE') {
-        console.log(`[StateCoordinator] ❌ Inventory not available. Reason: ${inventoryResult.reason}`);
+        this._runLog(`[StateCoordinator] ❌ Inventory not available. Reason: ${inventoryResult.reason}`);
         stateManager.updateOrderIntent(orderIntent.intentId, { status: 'REJECTED' });
-        console.log(`[StateCoordinator] 🛑 OrderIntent ${orderIntent.intentId} rejected\n`);
+        this._setSummary({
+          status: 'rejected',
+          steps: [...(this.lastRunSummary.steps || []), { step: 2, name: 'Inventory Agent', status: 'rejected', detail: inventoryResult.reason }],
+          inventory: { status: 'NOT_AVAILABLE', reason: inventoryResult.reason }
+        });
+        this._runLog(`[StateCoordinator] 🛑 OrderIntent ${orderIntent.intentId} rejected\n`);
         return {
           status: 'rejected',
           message: 'Insufficient inventory',
@@ -153,26 +186,27 @@ class StateCoordinator {
         };
       }
 
-      console.log(`[StateCoordinator] ✅ Inventory reserved for intent ${orderIntent.intentId}`);
+      this._runLog(`[StateCoordinator] ✅ Inventory reserved for intent ${orderIntent.intentId}`);
+      this._setSummary({
+        steps: [...(this.lastRunSummary.steps || []), { step: 2, name: 'Inventory Agent', status: 'ok', detail: 'Stock reserved' },
+          { step: 3, name: 'Order Creation', status: 'ok', detail: '' }],
+        inventory: { status: 'AVAILABLE', productId: inventoryResult.productId, quantity: inventoryResult.quantity }
+      });
       stateManager.updateOrderIntent(orderIntent.intentId, {
         status: 'VALIDATED',
         productId: inventoryResult.productId || orderIntent.productId
       });
 
-      // Step 3: Order Creation — ONLY when InventoryAgent returned AVAILABLE.
-      // We convert OrderIntent → confirmed Order here so that every Order in
-      // state has reserved inventory. No Order is created if inventory was
-      // NOT_AVAILABLE (flow already returned above).
-      console.log(`[StateCoordinator] ➤ Step 3: Creating Order (Intent → Order)...`);
+      this._runLog(`[StateCoordinator] ➤ Step 3: Creating Order (Intent → Order)...`);
       const order = orderCreation.createOrderFromIntent(orderIntent, inventoryResult);
       const { order: persistedOrder, event: orderCreatedEvent } = orderCreation.persistOrderAndPrepareEvent(order, orderIntent);
       this._logEvent(orderCreatedEvent);
-      console.log(`[StateCoordinator] 📥 Event: ORDER_CREATED (order_confirmed)`);
-      console.log(`[StateCoordinator] ✅ Order created: ${persistedOrder.orderId} (from intent ${orderIntent.intentId})`);
+      this._runLog(`[StateCoordinator] 📥 Event: ORDER_CREATED (order_confirmed)`);
+      this._runLog(`[StateCoordinator] ✅ Order created: ${persistedOrder.orderId} (from intent ${orderIntent.intentId})`);
+      this._setSummary({ orderId: persistedOrder.orderId, orderStatus: 'READY_TO_FULFILL' });
       stateManager.calculateSystemState();
 
-      // Step 4: Decision Engine — plan tasks for order (no staff assignment)
-      console.log(`[StateCoordinator] ➤ Step 4: Routing to Decision Engine...`);
+      this._runLog(`[StateCoordinator] ➤ Step 4: Routing to Decision Engine...`);
       const tasks = decisionEngine.planTasksForOrder(persistedOrder, stateManager);
       const taskIds = tasks.map(t => t.taskId);
       for (const task of tasks) {
@@ -185,18 +219,29 @@ class StateCoordinator {
       const planExplanation = decisionEngine.getPlanExplanation(persistedOrder);
       const timeAndDeadline = getTimeAndDeadlineFeasibility(persistedOrder, tasks);
 
-      console.log(`[StateCoordinator] ✅ Tasks planned: ${taskIds.join(', ')}`);
-      console.log(`[StateCoordinator]   Sequence: ${planExplanation.sequence.join(' → ')}`);
-      console.log(`[StateCoordinator]   Time required: ${timeAndDeadline.totalHours.toFixed(2)}h total`);
+      this._runLog(`[StateCoordinator] ✅ Tasks planned: ${taskIds.join(', ')}`);
+      this._runLog(`[StateCoordinator]   Sequence: ${planExplanation.sequence.join(' → ')}`);
+      this._runLog(`[StateCoordinator]   Time required: ${timeAndDeadline.totalHours.toFixed(2)}h total`);
       timeAndDeadline.breakdown.forEach(b => {
-        console.log(`[StateCoordinator]     - ${b.taskId} (${b.taskType}): ${b.hours.toFixed(2)}h`);
+        this._runLog(`[StateCoordinator]     - ${b.taskId} (${b.taskType}): ${b.hours.toFixed(2)}h`);
       });
       if (timeAndDeadline.deadline) {
         const feasibleStr = timeAndDeadline.feasible === true ? 'Yes' : timeAndDeadline.feasible === false ? 'No' : '—';
-        console.log(`[StateCoordinator]   Deadline: ${timeAndDeadline.deadline.toISOString()} | Feasible: ${feasibleStr}`);
+        this._runLog(`[StateCoordinator]   Deadline: ${timeAndDeadline.deadline.toISOString()} | Feasible: ${feasibleStr}`);
       } else {
-        console.log(`[StateCoordinator]   Deadline: not set (cannot verify)`);
+        this._runLog(`[StateCoordinator]   Deadline: not set (cannot verify)`);
       }
+
+      this._setSummary({
+        steps: [...(this.lastRunSummary.steps || []), { step: 4, name: 'Decision Engine', status: 'ok', detail: `Tasks: ${taskIds.join(', ')}` }],
+        tasks: tasks.map(t => ({ taskId: t.taskId, taskType: t.taskType, estimatedDuration: t.estimatedDuration, status: t.status })),
+        sequence: planExplanation.sequence,
+        timeRequiredHours: timeAndDeadline.totalHours,
+        timeBreakdown: timeAndDeadline.breakdown,
+        deadline: timeAndDeadline.deadline ? timeAndDeadline.deadline.toISOString() : null,
+        deadlineFeasible: timeAndDeadline.feasible,
+        estimatedCompletion: timeAndDeadline.estimatedCompletion ? timeAndDeadline.estimatedCompletion.toISOString() : null
+      });
 
       this._logEvent(createEvent(EventTypes.TASKS_PLANNED, {
         orderId: persistedOrder.orderId,
@@ -212,19 +257,24 @@ class StateCoordinator {
       }));
       stateManager.calculateSystemState();
 
-      // Step 5: Workforce Agent — show 2–3 candidates, then select best for the job
-      console.log(`[StateCoordinator] ➤ Step 5: Routing to Workforce Agent...`);
+      this._runLog(`[StateCoordinator] ➤ Step 5: Routing to Workforce Agent...`);
       const workforceResult = workforceAgent.selectBestStaffForOrder(persistedOrder, stateManager);
       let assignedStaffId = null;
       let assignedStaffName = null;
 
       if (workforceResult.candidates && workforceResult.candidates.length > 0) {
-        console.log(`[StateCoordinator]   Candidates (${workforceResult.candidates.length}):`);
+        this._runLog(`[StateCoordinator]   Candidates (${workforceResult.candidates.length}):`);
         workforceResult.candidates.forEach((c, i) => {
           const marker = workforceResult.staff && c.staffId === workforceResult.staff.staffId ? ' ← selected' : '';
-          console.log(`[StateCoordinator]     ${i + 1}. ${c.name} (${c.staffId}): ${c.currentWorkload}h current, ${c.freeCapacity}h free${marker}`);
+          this._runLog(`[StateCoordinator]     ${i + 1}. ${c.name} (${c.staffId}): ${c.currentWorkload}h current, ${c.freeCapacity}h free${marker}`);
         });
       }
+
+      this._setSummary({
+        steps: [...(this.lastRunSummary.steps || []), { step: 5, name: 'Workforce Agent', status: workforceResult.staff ? 'ok' : 'warn', detail: workforceResult.staff ? workforceResult.reason : workforceResult.reason }],
+        candidates: workforceResult.candidates || [],
+        selectedStaff: workforceResult.staff ? { staffId: workforceResult.staff.staffId, name: workforceResult.staff.name, reason: workforceResult.reason } : null
+      });
 
       if (workforceResult.staff) {
         this._logEvent(createEvent(EventTypes.STAFF_SELECTED, {
@@ -235,11 +285,10 @@ class StateCoordinator {
           reason: workforceResult.reason,
           candidates: workforceResult.candidates
         }));
-        console.log(`[StateCoordinator] ✅ Staff selected: ${workforceResult.staff.name} (${workforceResult.staff.staffId})`);
-        console.log(`[StateCoordinator]   Reason: ${workforceResult.reason}`);
+        this._runLog(`[StateCoordinator] ✅ Staff selected: ${workforceResult.staff.name} (${workforceResult.staff.staffId})`);
+        this._runLog(`[StateCoordinator]   Reason: ${workforceResult.reason}`);
 
-        // Step 6: Coordination Agent — assign tasks to staff and update workload
-        console.log(`[StateCoordinator] ➤ Step 6: Routing to Coordination Agent...`);
+        this._runLog(`[StateCoordinator] ➤ Step 6: Routing to Coordination Agent...`);
         const orderTasks = stateManager.getTasksByOrder(persistedOrder.orderId);
         const assignResult = coordinationAgent.assignTasksToStaff(
           orderTasks,
@@ -247,7 +296,7 @@ class StateCoordinator {
           stateManager,
           (ev) => {
             this._logEvent(ev);
-            console.log(`[StateCoordinator] 📥 Event: ${ev.type}`);
+            this._runLog(`[StateCoordinator] 📥 Event: ${ev.type}`);
           }
         );
 
@@ -259,28 +308,37 @@ class StateCoordinator {
             assignedStaffId,
             assignedStaffName
           });
-          console.log(`[StateCoordinator] ✅ Tasks assigned to ${assignResult.staffName}; new workload: ${assignResult.newWorkload}h`);
+          this._runLog(`[StateCoordinator] ✅ Tasks assigned to ${assignResult.staffName}; new workload: ${assignResult.newWorkload}h`);
+          this._setSummary({
+            steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'ok', detail: `Assigned to ${assignResult.staffName}; workload ${assignResult.newWorkload}h` }],
+            coordination: { assignedStaffName: assignResult.staffName, newWorkload: assignResult.newWorkload }
+          });
         } else {
-          console.log(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
+          this._runLog(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
+          this._setSummary({ steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'warn', detail: assignResult.message }] });
         }
       } else {
-        console.log(`[StateCoordinator] ⚠️  No staff available: ${workforceResult.reason}`);
+        this._runLog(`[StateCoordinator] ⚠️  No staff available: ${workforceResult.reason}`);
       }
 
       stateManager.calculateSystemState();
 
-      // Step 7: Critic Agent — validate plan (inventory reserved, staff capacity); approve or reject; if rejected, emit replan
-      console.log(`[StateCoordinator] ➤ Step 7: Routing to Critic Agent...`);
+      this._runLog(`[StateCoordinator] ➤ Step 7: Routing to Critic Agent...`);
       const orderForCritic = stateManager.getOrder(persistedOrder.orderId);
       const criticResult = criticAgent.validateTaskPlan(orderForCritic, stateManager, (ev) => {
         this._logEvent(ev);
-        console.log(`[StateCoordinator] 📥 Event: ${ev.type}`);
+        this._runLog(`[StateCoordinator] 📥 Event: ${ev.type}`);
       });
 
       if (!criticResult.approved) {
-        console.log(`[StateCoordinator] ❌ Plan rejected: ${criticResult.reason}`);
-        console.log(`[StateCoordinator]   Issues: ${criticResult.issues.join(', ')}`);
-        console.log(`[StateCoordinator] 🛑 Replan requested; stopping before execution\n`);
+        this._runLog(`[StateCoordinator] ❌ Plan rejected: ${criticResult.reason}`);
+        this._runLog(`[StateCoordinator]   Issues: ${criticResult.issues.join(', ')}`);
+        this._setSummary({
+          status: 'plan_rejected',
+          steps: [...(this.lastRunSummary.steps || []), { step: 7, name: 'Critic Agent', status: 'rejected', detail: criticResult.reason, issues: criticResult.issues }],
+          critic: { approved: false, reason: criticResult.reason, issues: criticResult.issues }
+        });
+        this._runLog(`[StateCoordinator] 🛑 Replan requested; stopping before execution\n`);
         return {
           status: 'plan_rejected',
           message: 'Critic rejected task plan; replan requested',
@@ -289,13 +347,15 @@ class StateCoordinator {
           reason: criticResult.reason
         };
       }
-      console.log(`[StateCoordinator] ✅ Plan approved: ${criticResult.reason}`);
+      this._runLog(`[StateCoordinator] ✅ Plan approved: ${criticResult.reason}`);
+      this._setSummary({
+        steps: [...(this.lastRunSummary.steps || []), { step: 7, name: 'Critic Agent', status: 'ok', detail: criticResult.reason }, { step: 8, name: 'Task Executor', status: 'ok', detail: 'Order processing complete' }],
+        critic: { approved: true, reason: criticResult.reason },
+        status: 'success'
+      });
 
-      // Step 8: Execute approved plan
-      console.log(`[StateCoordinator] ➤ Step 8: Routing to Task Executor...`);
-
-      // System state already recalculated after order creation
-      console.log(`[StateCoordinator] ✅ Order processing complete\n`);
+      this._runLog(`[StateCoordinator] ➤ Step 8: Routing to Task Executor...`);
+      this._runLog(`[StateCoordinator] ✅ Order processing complete\n`);
 
       return {
         status: 'success',
@@ -306,7 +366,7 @@ class StateCoordinator {
       };
       
     } catch (error) {
-      console.error(`[StateCoordinator] ❌ Error in order processing:`, error.message);
+      this._runLog(`[StateCoordinator] ❌ Error in order processing: ${error.message}`, 'error');
       return { status: 'error', message: error.message };
     }
   }

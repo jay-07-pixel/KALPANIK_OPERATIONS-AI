@@ -52,6 +52,20 @@ body {
   color: var(--muted);
 }
 
+.nav {
+  margin-top: 0.5rem;
+}
+
+.nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.nav a:hover {
+  text-decoration: underline;
+}
+
 .main {
   flex: 1;
 }
@@ -248,6 +262,17 @@ button:disabled {
 .result-content .task { margin-left: 1rem; }
 .result-content .feasible-yes { color: var(--success); }
 .result-content .feasible-no { color: var(--error); }
+
+.result-content .customer-service {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--accent);
+}
 
 .orders-list {
   margin-top: 0.5rem;

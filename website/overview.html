@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KALPANIK OPERATIONS AI — Dashboard Overview</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="overview.css" />
+</head>
+<body>
+  <div class="overview-app">
+    <main class="main-content">
+      <header class="top-header">
+        <div class="header-left">
+          <h1 class="page-title">Dashboard Overview</h1>
+          <nav class="top-nav">
+            <a href="index.html">Shop</a>
+            <a href="dashboard.html">Agents Log</a>
+          </nav>
+        </div>
+        <div class="header-actions">
+          <button type="button" id="refresh-dashboard" class="btn-refresh" title="Sync with backend/terminal">↻ Refresh</button>
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="search" id="search-input" placeholder="Search orders, items..." class="search-input" />
+          </div>
+          <button type="button" class="btn-icon" aria-label="Notifications">🔔</button>
+        </div>
+      </header>
+
+      <div class="dashboard-body">
+        <!-- KPI cards -->
+        <section class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-icon kpi-orders">📦</div>
+            <div class="kpi-content">
+              <span class="kpi-value" id="kpi-total-orders">0</span>
+              <span class="kpi-label">Total Orders</span>
+              <span class="kpi-change positive" id="kpi-orders-change">—</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon kpi-staff">👥</div>
+            <div class="kpi-content">
+              <span class="kpi-value" id="kpi-active-staff">0 / 0</span>
+              <span class="kpi-label">Active Staff</span>
+              <span class="kpi-badge online" id="kpi-staff-badge">Online</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon kpi-stock">⚠</div>
+            <div class="kpi-content">
+              <span class="kpi-value" id="kpi-low-stock">0</span>
+              <span class="kpi-label">Low Stock Items</span>
+              <span class="kpi-badge urgent" id="kpi-stock-badge">Urgent Attention</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon kpi-eff">📈</div>
+            <div class="kpi-content">
+              <span class="kpi-value" id="kpi-efficiency">—%</span>
+              <span class="kpi-label">Efficiency</span>
+              <span class="kpi-change positive" id="kpi-eff-change">—</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="dashboard-grid">
+          <!-- Live Orders -->
+          <section class="panel live-orders" id="orders">
+            <div class="panel-header">
+              <div>
+                <h2>Live Orders</h2>
+                <p class="panel-sub">Real-time incoming requests</p>
+              </div>
+              <a href="#" class="panel-action">View All →</a>
+            </div>
+            <div class="panel-body" id="live-orders-list">
+              <p class="muted empty-msg">Loading…</p>
+            </div>
+          </section>
+
+          <!-- Right column: Workforce + Stock -->
+          <div class="right-column">
+            <section class="panel workforce-panel" id="workforce">
+              <div class="panel-header">
+                <h2>Workforce Availability</h2>
+                <button type="button" class="panel-action btn-panel-action" id="btn-manage">Manage</button>
+              </div>
+              <div class="panel-body" id="workforce-list">
+                <p class="muted empty-msg">Loading…</p>
+              </div>
+              <div class="utilization-wrap">
+                <div class="utilization-label">Utilization <span id="util-percent">0</span>%</div>
+                <div class="utilization-bar"><div class="utilization-fill" id="util-fill"></div></div>
+              </div>
+            </section>
+
+            <section class="panel stock-panel" id="inventory">
+              <div class="panel-header">
+                <h2>Stock Level</h2>
+                <button type="button" class="panel-action btn-panel-action" id="btn-restock">Restock</button>
+              </div>
+              <div class="panel-body" id="stock-list">
+                <p class="muted empty-msg">Loading…</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Manage Workforce Modal -->
+  <div id="modal-manage" class="modal" role="dialog" aria-labelledby="modal-manage-title" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-manage-title">Manage Workforce</h2>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Add or remove staff. Update status and workload.</p>
+        <div class="add-staff-form">
+          <h3 style="font-size:0.95rem;margin:0 0 0.5rem">Add Staff</h3>
+          <div class="add-staff-row">
+            <div><label>Name</label><input type="text" id="add-staff-name" placeholder="Full name" /></div>
+            <div><label>Role</label><select id="add-staff-role"><option value="PRODUCTION">PRODUCTION</option><option value="QUALITY">QUALITY</option><option value="PACKING">PACKING</option><option value="DELIVERY">DELIVERY</option><option value="MANAGER">MANAGER</option></select></div>
+            <div><label>Capacity (h)</label><input type="number" id="add-staff-capacity" min="1" max="24" value="8" /></div>
+            <button type="button" class="btn-save" id="btn-add-staff">Add</button>
+          </div>
+        </div>
+        <h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Current Staff</h3>
+        <div id="manage-staff-list" class="manage-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restock Modal -->
+  <div id="modal-restock" class="modal" role="dialog" aria-labelledby="modal-restock-title" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-restock-title">Restock Inventory</h2>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Add stock to items. Enter quantity to add.</p>
+        <div id="restock-list" class="restock-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="overview.js"></script>
+</body>
+</html>
