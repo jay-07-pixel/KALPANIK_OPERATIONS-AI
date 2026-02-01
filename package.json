@@ -4,6 +4,7 @@
   "description": "KALPANIK Operations AI — Agentic order management with delay prediction",
   "private": true,
   "scripts": {
+    "postinstall": "cd backend && npm install",
     "start": "cd backend && npm start",
     "dev": "cd backend && npm run dev"
   },
