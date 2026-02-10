@@ -13,6 +13,26 @@ const fs = require('fs');
 const MODEL_PATH = path.join(__dirname, '../../ml/delay_model.json');
 const FEATURE_NAMES = ['quantity', 'priority', 'time_hours', 'has_deadline', 'staff_workload', 'num_tasks', 'num_candidates', 'channel'];
 
+/**
+ * Delay risk index: named ranges for UI display.
+ * risk in [0, 0.35) → No tension
+ * risk in [0.35, 0.65) → A bit
+ * risk in [0.65, 1] → High chances it will get delayed
+ */
+const DELAY_RISK_RANGES = [
+  { max: 0.35, labelKey: 'no_tension', label: 'No tension', badgeClass: 'success' },
+  { max: 0.65, labelKey: 'a_bit', label: 'A bit', badgeClass: 'warn' },
+  { max: 1, labelKey: 'high', label: 'High chances it will get delayed', badgeClass: 'error' }
+];
+
+function getDelayRiskLabel(risk) {
+  const r = Number(risk);
+  for (const range of DELAY_RISK_RANGES) {
+    if (r < range.max) return { labelKey: range.labelKey, label: range.label, badgeClass: range.badgeClass };
+  }
+  return DELAY_RISK_RANGES[DELAY_RISK_RANGES.length - 1];
+}
+
 let cachedModel = null;
 
 function loadModel() {
@@ -59,10 +79,12 @@ function channelToNum(channel) {
 function predict(order, context = {}) {
   const model = loadModel();
   if (!model || model.type !== 'logistic_regression') {
+    const fallback = getDelayRiskLabel(0.5);
     return {
       risk: 0.5,
       delayed: false,
-      message: 'Model not loaded; using neutral risk.'
+      message: 'Model not loaded; using neutral risk.',
+      ...fallback
     };
   }
 
@@ -90,15 +112,25 @@ function predict(order, context = {}) {
     z += model.coef[i] * (scaled[i] ?? 0);
   }
 
-  const risk = sigmoid(z);
+  const risk = Math.round(sigmoid(z) * 100) / 100;
+  const { labelKey, label, badgeClass } = getDelayRiskLabel(risk);
   const delayed = risk >= 0.5;
 
+  const messageByLabel = {
+    no_tension: 'Order on track; low delay risk.',
+    a_bit: 'Some chance of delay. Monitor capacity.',
+    high: 'High chance of delay. Consider adding staff or extending deadline.'
+  };
+
   return {
-    risk: Math.round(risk * 100) / 100,
+    risk,
     delayed,
-    message: delayed
-      ? `Order likely to be delayed (risk: ${(risk * 100).toFixed(1)}%). Consider adding staff or extending deadline.`
-      : `Order on track (risk: ${(risk * 100).toFixed(1)}%).`
+    labelKey,
+    label,
+    badgeClass,
+    message: messageByLabel[labelKey] || (delayed
+      ? `Order likely to be delayed (${(risk * 100).toFixed(0)}%). Consider adding staff or extending deadline.`
+      : `Order on track (${(risk * 100).toFixed(0)}%).`)
   };
 }
 

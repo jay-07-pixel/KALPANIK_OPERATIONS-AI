@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPERATIONS — WhatsApp Log</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>OPERATIONS — WhatsApp Log</h1>
+      <nav class="nav">
+        <a href="index.html">Shop</a>
+        <a href="overview.html">Dashboard Overview</a>
+        <a href="dashboard.html">Agents Log</a>
+      </nav>
+    </header>
+
+    <main class="main">
+      <section class="card dashboard-section terminal-only">
+        <div class="dashboard-toolbar">
+          <button type="button" id="refresh-run">Refresh</button>
+          <span class="muted" id="run-info">Last WhatsApp run log</span>
+          <button type="button" id="toggle-log" class="toggle-log" aria-expanded="true">Hide terminal log</button>
+        </div>
+        <pre id="terminal-output" class="terminal-output"></pre>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Backend: <span id="api-base">—</span> · GET /order/last-run/whatsapp</p>
+    </footer>
+  </div>
+  <script src="config.js"></script>
+  <script src="whatsapp.js"></script>
+</body>
+</html>

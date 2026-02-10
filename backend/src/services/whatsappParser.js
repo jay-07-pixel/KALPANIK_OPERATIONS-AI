@@ -2,17 +2,14 @@
  * WHATSAPP PARSER
  * 
  * Uses Groq API (LLM) ONLY for parsing unstructured WhatsApp text
+ * Same 10 clothing products as website (see productCatalog.js)
  * 
- * Purpose:
- * - Extract structured data from free-text messages
- * - NO decision-making
- * - NO business logic
- * 
- * Input: "I need 15 boxes of Widget A by tomorrow. Urgent!"
- * Output: { product: "Widget A", quantity: 15, unit: "boxes", priority: "HIGH" }
+ * Input: "I need 2 Cotton Crew T-Shirt by tomorrow. Urgent!"
+ * Output: { product: "Cotton Crew T-Shirt", quantity: 2, unit: "pieces", priority: "URGENT" }
  */
 
 const axios = require('axios');
+const { getProductNames } = require('../data/productCatalog');
 
 class WhatsAppParser {
   constructor() {
@@ -24,34 +21,35 @@ class WhatsAppParser {
 
   /**
    * Parse WhatsApp message into structured data
-   * 
+   *
    * @param {string} message - Raw WhatsApp text
+   * @param {{ log?: (text: string, type?: string) => void }} opts - Optional logger (for run log so web matches terminal)
    * @returns {Promise<Object>} Parsed structured data
    */
-  async parseMessage(message) {
-    console.log('\n[WhatsAppParser] 🤖 Parsing message with Groq...');
-    console.log('[WhatsAppParser] Message:', message);
+  async parseMessage(message, opts = {}) {
+    const log = opts.log ? (text, type) => opts.log(text, type) : (text, type) => (type === 'error' ? console.error(text) : console.log(text));
+    log('\n[WhatsAppParser] 🤖 Parsing message with Groq...');
+    log('[WhatsAppParser] Message: ' + (message || ''));
 
     try {
       // Call Groq API
       const parsed = await this._callGroqAPI(message);
-      
+
       // Validate parsed result
       const validated = this._validateAndClean(parsed);
-      
-      console.log('[WhatsAppParser] ✅ Parsed successfully');
-      console.log('[WhatsAppParser] Result:', JSON.stringify(validated, null, 2));
-      
+
+      log('[WhatsAppParser] ✅ Parsed successfully');
+      log('[WhatsAppParser] Result: ' + JSON.stringify(validated, null, 2));
+
       return validated;
-      
     } catch (error) {
-      console.error('[WhatsAppParser] ❌ Groq API failed:', error.message);
+      log('[WhatsAppParser] ❌ Groq API failed: ' + error.message, 'error');
       if (error.response?.data?.error?.message) {
-        console.error('[WhatsAppParser] Groq error:', error.response.data.error.message);
+        log('[WhatsAppParser] Groq error: ' + error.response.data.error.message, 'error');
       }
       // Fallback: Try simple regex-based parsing
-      console.log('[WhatsAppParser] 🔄 Attempting fallback parsing...');
-      return this._fallbackParse(message);
+      log('[WhatsAppParser] 🔄 Attempting fallback parsing...');
+      return this._fallbackParse(message, { log });
     }
   }
 
@@ -109,36 +107,39 @@ class WhatsAppParser {
 
   /**
    * Build deterministic prompt for Groq
+   * Injects current product catalog so LLM returns exact product names (same as website)
    */
   _buildPrompt(message) {
+    const productNames = getProductNames();
+    const productList = productNames.join(', ');
     return `Extract order information from this WhatsApp message and return as JSON.
 
 Message: "${message}"
 
+AVAILABLE PRODUCTS (you MUST use one of these EXACT names for "product", or null if no product mentioned):
+${productList}
+
+Examples of mapping: "t-shirt" or "cotton t-shirt" → "Cotton Crew T-Shirt"; "jacket" or "denim" → "Denim Jacket"; "dress" or "floral dress" → "Summer Floral Dress"; "chinos" → "Slim Fit Chinos"; "sweater" → "Wool Blend Sweater"; "sneakers" or "shoes" → "Running Sneakers"; "blazer" → "Casual Blazer"; "polo" → "Striped Polo Shirt"; "trousers" → "High-Waist Trousers"; "hoodie" → "Zip-Up Hoodie".
+
 Extract the following fields:
-- product: The product name (string)
+- product: MUST be exactly one of the available product names above, or null
 - quantity: The number of items requested (number)
-- unit: Unit of measurement like "boxes", "pieces", "kg" (string)
-- priority: Order urgency - "LOW", "MEDIUM", "HIGH", or "URGENT" (string)
-- deadline: CRITICAL - Any mentioned deadline/date. Extract as a short string: "tomorrow", "tomorrow 3pm", "by tomorrow", "today", "3pm", "Friday", etc. Use null ONLY if absolutely no deadline mentioned.
+- unit: "pieces" for clothes, "pairs" for footwear (Running Sneakers). Default "pieces"
+- priority: "LOW", "MEDIUM", "HIGH", or "URGENT"
+- deadline: Any mentioned deadline as short string: "tomorrow", "tomorrow 3pm", "by tomorrow", etc. Use null only if no deadline mentioned.
 
 Rules:
-1. If product name is unclear, use best guess
-2. If quantity is not mentioned, use null
-3. Priority based on keywords:
-   - "urgent", "asap", "immediately" → "URGENT"
-   - "priority", "important", "soon" → "HIGH"
-   - "normal", "regular" → "MEDIUM"
-   - Default → "MEDIUM"
-4. If unit is not mentioned, use "pieces"
-5. For deadline: Extract EXACTLY what the user said - "tomorrow", "by tomorrow", "tomorrow 3pm", "by 5pm", "Friday" - never null if user mentioned a time/date
-6. Return ONLY valid JSON, no explanations
+1. product MUST be one of: ${productList} (exact spelling)
+2. If quantity not mentioned, use null
+3. Priority: "urgent"/"asap" → "URGENT"; "priority"/"soon" → "HIGH"; else "MEDIUM"
+4. Default unit "pieces"; use "pairs" only for sneakers/shoes
+5. Return ONLY valid JSON, no explanations
 
 Required JSON format:
 {
-  "product": "string or null",
+  "product": "exact name from list or null",
   "quantity": number or null,
-  "unit": "string",
+  "unit": "pieces or pairs",
   "priority": "LOW" | "MEDIUM" | "HIGH" | "URGENT",
   "deadline": "string or null"
 }`;
@@ -146,7 +147,7 @@ Required JSON format:
 
   /**
    * Validate and clean Groq response
-   * Handles LLM returning deadline in various formats: string, object, dueDate, etc.
+   * Maps product to exact catalog name (same 10 products as website)
    */
   _validateAndClean(parsed) {
     // Extract deadline from various LLM output formats
@@ -159,15 +160,27 @@ Required JSON format:
     }
     if (deadline && deadline.trim() === '') deadline = null;
 
+    const catalogNames = getProductNames();
+    let product = (parsed.product && String(parsed.product).trim()) || null;
+    if (product) {
+      const exact = catalogNames.find(n => n.toLowerCase() === product.toLowerCase());
+      if (exact) product = exact;
+      else {
+        const partial = catalogNames.find(n => n.toLowerCase().includes(product.toLowerCase()) || product.toLowerCase().includes(n.toLowerCase()));
+        if (partial) product = partial;
+      }
+    }
+
     const result = {
-      product: parsed.product || null,
+      product,
       quantity: parsed.quantity ? parseInt(parsed.quantity) : null,
       unit: parsed.unit || 'pieces',
       priority: this._normalizePriority(parsed.priority),
       deadline: deadline || null
     };
 
-    // Validate quantity
+    result.unit = (result.unit && result.unit.toLowerCase() === 'pairs') ? 'pairs' : 'pieces';
+
     if (result.quantity !== null && (isNaN(result.quantity) || result.quantity <= 0)) {
       result.quantity = null;
     }
@@ -188,9 +201,11 @@ Required JSON format:
   /**
    * Fallback parser using simple regex
    * Used when Groq API fails
+   * @param {{ log?: (text: string, type?: string) => void }} opts
    */
-  _fallbackParse(message) {
-    console.log('[WhatsAppParser] 🔧 Using fallback regex parsing...');
+  _fallbackParse(message, opts = {}) {
+    const log = opts.log ? (text, type) => opts.log(text, type) : (text, type) => (type === 'error' ? console.error(text) : console.log(text));
+    log('[WhatsAppParser] 🔧 Using fallback regex parsing...');
     
     const result = {
       product: null,
@@ -224,14 +239,37 @@ Required JSON format:
       /([A-Z][a-z]+(?:\s+[A-Z0-9][a-z0-9]*)?)/  // Capitalized words
     ];
 
+    const catalogNames = getProductNames();
     for (const pattern of productPatterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
-        let product = match[1].trim();
-        // Clean up common noise words
-        product = product.replace(/\s+(by|urgent|asap|needed|for)$/i, '');
+        let product = match[1].trim().replace(/\s+(by|urgent|asap|needed|for)$/i, '');
         if (product.length > 2) {
-          result.product = product;
+          const exact = catalogNames.find(n => n.toLowerCase() === product.toLowerCase());
+          const partial = catalogNames.find(n => n.toLowerCase().includes(product.toLowerCase()) || product.toLowerCase().includes(n.toLowerCase()));
+          result.product = exact || partial || product;
+          break;
+        }
+      }
+    }
+    // Fallback: map keywords to catalog product names (same 10 as website)
+    if (!result.product) {
+      const lower = message.toLowerCase();
+      const keywordToProduct = [
+        [['t-shirt', 'shirt', 'tee', 'cotton crew'], 'Cotton Crew T-Shirt'],
+        [['denim jacket', 'denim', 'jacket'], 'Denim Jacket'],
+        [['dress', 'floral dress', 'summer dress'], 'Summer Floral Dress'],
+        [['chinos', 'chino', 'slim fit'], 'Slim Fit Chinos'],
+        [['sweater', 'wool blend'], 'Wool Blend Sweater'],
+        [['sneakers', 'running shoes', 'shoes', 'trainers'], 'Running Sneakers'],
+        [['blazer', 'casual blazer'], 'Casual Blazer'],
+        [['polo', 'striped polo'], 'Striped Polo Shirt'],
+        [['trousers', 'high waist', 'high-waist'], 'High-Waist Trousers'],
+        [['hoodie', 'hoody', 'zip-up'], 'Zip-Up Hoodie']
+      ];
+      for (const [keywords, name] of keywordToProduct) {
+        if (keywords.some(kw => lower.includes(kw))) {
+          result.product = name;
           break;
         }
       }
@@ -269,8 +307,8 @@ Required JSON format:
       }
     }
 
-    console.log('[WhatsAppParser] ⚠️  Fallback result:', JSON.stringify(result, null, 2));
-    
+    log('[WhatsAppParser] ⚠️  Fallback result: ' + JSON.stringify(result, null, 2));
+
     return result;
   }
 

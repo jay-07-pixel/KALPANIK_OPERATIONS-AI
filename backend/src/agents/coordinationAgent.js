@@ -1,15 +1,14 @@
 /**
  * COORDINATION AGENT
  *
- * Responsibilities:
- * - Assign tasks to selected staff
+ * - Assign tasks to staff (per task by role, or whole order to one person)
  * - Update staff workloads
  *
- * Rules: No LLM, deterministic logic.
- * Validates capacity before assigning (new workload <= maxCapacity).
+ * assignTasksByRole: each task goes to best staff for that task type (PRODUCTION/QUALITY/PACKING).
  */
 
 const { EventTypes, createEvent } = require('../state/events');
+const workforceAgent = require('./workforceAgent');
 
 /**
  * Assign a list of tasks to a staff member and update workload.
@@ -88,8 +87,62 @@ function assignTasksToStaff(tasks, staffId, stateManager, onEmit) {
   };
 }
 
+/**
+ * Assign each task to the best staff for that task type (by role).
+ * PREPARE → PRODUCTION, QUALITY_CHECK → QUALITY, PACK → PACKING.
+ * Returns assigned staff names and per-task assignment details.
+ *
+ * @param {Task[]} tasks - Tasks for one order (from getTasksByOrder)
+ * @param {Object} stateManager - State manager
+ * @param {Function} [onEmit] - Optional event callback
+ * @returns {{ success: boolean, assignedStaffNames: string[], assignments: Array, message: string }}
+ */
+function assignTasksByRole(tasks, stateManager, onEmit) {
+  const assignments = [];
+  const staffNamesSet = new Set();
+
+  for (const task of tasks) {
+    const sel = workforceAgent.selectBestStaffForTask(task, stateManager);
+    if (!sel.staff) {
+      return {
+        success: false,
+        assignedStaffNames: [],
+        assignments,
+        message: `No staff for task ${task.taskId} (${task.taskType}): ${sel.reason}`
+      };
+    }
+    const assignResult = assignTasksToStaff([task], sel.staff.staffId, stateManager, onEmit);
+    if (!assignResult.success) {
+      return {
+        success: false,
+        assignedStaffNames: [...staffNamesSet],
+        assignments,
+        message: assignResult.message || `Failed to assign ${task.taskId}`
+      };
+    }
+    assignments.push({
+      taskId: task.taskId,
+      taskType: task.taskType,
+      staffId: sel.staff.staffId,
+      staffName: assignResult.staffName
+    });
+    staffNamesSet.add(assignResult.staffName);
+  }
+
+  const assignedStaffNames = [...staffNamesSet];
+  return {
+    success: true,
+    assignedStaffNames,
+    assignments,
+    message: assignedStaffNames.length === 1
+      ? `All tasks → ${assignedStaffNames[0]}`
+      : `Tasks → ${assignedStaffNames.join(', ')}`
+  };
+}
+
 const coordinationAgent = {
-  assignTasksToStaff
+  assignTasksToStaff,
+  assignTasksByRole
 };
 
 module.exports = coordinationAgent;

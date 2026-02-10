@@ -28,6 +28,8 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_PATH = os.path.join(SCRIPT_DIR, "delay_risk_dataset.json")
+# API-aligned: time_hours in 0.25–12 (order processing time), same as our API
+API_DATASET_PATH = os.path.join(SCRIPT_DIR, "delay_risk_dataset_api.json")
 MODEL_PATH = os.path.join(SCRIPT_DIR, "delay_model.json")
 
 FEATURE_NAMES = ["quantity", "priority", "time_hours", "has_deadline", "staff_workload", "num_tasks", "num_candidates", "channel"]
@@ -48,9 +50,6 @@ def generate_synthetic_dataset(n=1000):
         channel = random.choice([0, 1])
 
         # Label: delayed = 1 when high risk
-        # - deadline set + time > staff capacity
-        # - high quantity + low candidates
-        # - staff workload already high
         delayed = 0
         if has_deadline and time_hours > (8 - staff_workload):
             delayed = 1
@@ -64,6 +63,58 @@ def generate_synthetic_dataset(n=1000):
             delayed = 1
         elif random.random() < 0.15:
             delayed = 1
+
+        data.append({
+            "quantity": quantity,
+            "priority": priority,
+            "time_hours": time_hours,
+            "has_deadline": has_deadline,
+            "staff_workload": staff_workload,
+            "num_tasks": num_tasks,
+            "num_candidates": num_candidates,
+            "channel": channel,
+            "delayed": delayed
+        })
+    return data
+
+
+def generate_api_aligned_dataset(n=3000):
+    """
+    Dataset with SAME units as our API: time_hours = order processing time (0.2–10h),
+    quantity 1–200. So 1 t-shirt (qty=1, time~0.5–1h) → low risk; big orders → higher risk.
+    """
+    random.seed(42)
+    data = []
+    for _ in range(n):
+        quantity = random.randint(1, 200)
+        priority = random.randint(0, 3)
+        # Order processing time in hours (like our DecisionEngine: 0.25h–8h)
+        time_hours = round(0.15 * quantity + random.uniform(0.2, 1.5), 2)
+        time_hours = min(max(time_hours, 0.25), 12)
+        has_deadline = random.choice([0, 1])
+        staff_workload = round(random.uniform(0, 8), 1)
+        num_tasks = 3
+        num_candidates = random.choice([1, 2, 3, 4, 5])
+        channel = random.choice([0, 1])
+
+        # delayed = 1 only when it's logical (ML learns these patterns)
+        remaining_capacity = 8 - staff_workload
+        delayed = 0
+        if has_deadline and time_hours > remaining_capacity:
+            delayed = 1
+        elif quantity >= 100 and num_candidates <= 1:
+            delayed = 1
+        elif quantity >= 150:
+            delayed = 1
+        elif staff_workload >= 6 and time_hours >= 3:
+            delayed = 1
+        elif time_hours >= 6 and num_candidates <= 1:
+            delayed = 1
+        elif random.random() < 0.12:
+            delayed = 1
+        # Small orders (qty 1–5, low time) → almost never delayed
+        if quantity <= 5 and time_hours <= 1.5 and staff_workload < 6:
+            delayed = 0
 
         data.append({
             "quantity": quantity,
@@ -121,23 +172,31 @@ def train_simple(data):
 
 
 def main():
-    # Load or generate dataset (need enough samples for training)
-    if os.path.exists(DATASET_PATH):
+    # Prefer API-aligned dataset so model uses same units as API (time_hours = order processing time, 0.25–12h).
+    # Otherwise Olist-derived data has time_hours ~200 (delivery window), so 1 t-shirt (0.75h) gets wrong risk.
+    if os.path.exists(API_DATASET_PATH):
+        with open(API_DATASET_PATH, "r") as f:
+            data = json.load(f)
+        print(f"Loaded {len(data)} API-aligned samples from {API_DATASET_PATH} (time_hours = order processing time)")
+    elif os.path.exists(DATASET_PATH):
         with open(DATASET_PATH, "r") as f:
             data = json.load(f)
+        # If existing dataset has Olist-scale time (mean >> 50), recommend API dataset for logical 1-item risk
+        time_mean = sum(r.get("time_hours", 0) for r in data[:500]) / min(500, len(data))
+        if time_mean > 50 and len(data) > 0:
+            print("WARNING: Dataset time_hours looks like Olist (delivery window). For logical risk for 1-item orders,")
+            print("  generate API-aligned data: python -c \"from train_delay_predictor import *; import json; json.dump(generate_api_aligned_dataset(3000), open(API_DATASET_PATH,'w'), indent=2)\"")
+            print("  Then re-run this script.")
         if len(data) < 1000:
-            prev_count = len(data)
-            data = generate_synthetic_dataset(1000)
-            with open(DATASET_PATH, "w") as f:
-                json.dump(data, f, indent=2)
-            print(f"Dataset had {prev_count} rows (< 1000); generated 1000 synthetic samples")
+            data = data + generate_api_aligned_dataset(1000 - len(data))
+            print(f"Topped up to {len(data)} with API-aligned samples")
         else:
             print(f"Loaded {len(data)} samples from {DATASET_PATH}")
     else:
-        data = generate_synthetic_dataset(1000)
-        with open(DATASET_PATH, "w") as f:
+        data = generate_api_aligned_dataset(3000)
+        with open(API_DATASET_PATH, "w") as f:
             json.dump(data, f, indent=2)
-        print(f"Generated and saved {len(data)} synthetic samples to {DATASET_PATH}")
+        print(f"Generated {len(data)} API-aligned samples (time_hours 0.25–12, quantity 1–200) -> {API_DATASET_PATH}")
 
     # Train
     if HAS_SKLEARN:

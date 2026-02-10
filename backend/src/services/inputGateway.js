@@ -73,10 +73,11 @@ class InputGateway {
    */
   async processWhatsAppOrder(data) {
     console.log('\n[InputGateway] 💬 WhatsApp message received');
-    
+    stateCoordinator.appendPendingRunLog('\n[InputGateway] 💬 WhatsApp message received');
+
     // Validate required fields
     this._validateWhatsAppOrder(data);
-    
+
     // Normalize to standard format
     const normalizedData = {
       channel: 'whatsapp',
@@ -86,19 +87,24 @@ class InputGateway {
       timestamp: data.timestamp || new Date().toISOString(),
       rawInput: data // Store original data
     };
-    
+
     console.log('[InputGateway] ✓ Normalized WhatsApp message');
     console.log('[InputGateway]   From:', normalizedData.customerId);
     console.log('[InputGateway]   Message:', normalizedData.message);
     console.log('[InputGateway]   Note: Will be parsed by Order Agent (LLM)');
-    
+    stateCoordinator.appendPendingRunLog('[InputGateway] ✓ Normalized WhatsApp message');
+    stateCoordinator.appendPendingRunLog('[InputGateway]   From: ' + (normalizedData.customerId || ''));
+    stateCoordinator.appendPendingRunLog('[InputGateway]   Message: ' + (normalizedData.message || ''));
+    stateCoordinator.appendPendingRunLog('[InputGateway]   Note: Will be parsed by Order Agent (LLM)');
+
     // Create event and route to State Coordinator
     const event = createEvent(EventTypes.ORDER_RECEIVED, {
       channel: 'whatsapp',
       data: normalizedData
     });
-    
+
     console.log('[InputGateway] ➤ Routing to State Coordinator\n');
+    stateCoordinator.appendPendingRunLog('[InputGateway] ➤ Routing to State Coordinator\n');
     const coordinatorResult = await stateCoordinator.handleEvent(event);
     
     return {

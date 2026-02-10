@@ -39,7 +39,7 @@ function renderOverview(summary) {
       ${summary.productName ? `<dt>Product</dt><dd>${escapeHtml(summary.productName)}</dd>` : ''}
       ${summary.quantity != null ? `<dt>Quantity</dt><dd>${escapeHtml(summary.quantity)} ${escapeHtml(summary.unit || '')}</dd>` : ''}
       ${summary.inventory ? `<dt>Inventory</dt><dd><span class="badge badge-${summary.inventory.status === 'AVAILABLE' ? 'success' : 'error'}">${escapeHtml(summary.inventory.status)}</span>${summary.inventory.reason ? ' ' + escapeHtml(summary.inventory.reason) : ''}</dd>` : ''}
-      ${summary.delayRisk ? `<dt>Delay Risk</dt><dd><span class="badge badge-${summary.delayRisk.delayed ? 'error' : 'success'}">${(summary.delayRisk.risk * 100).toFixed(0)}%</span> ${summary.delayRisk.delayed ? 'Likely delayed' : 'On track'}</dd>` : ''}
+      ${summary.delayRisk ? `<dt>Delay Risk</dt><dd><span class="badge badge-${summary.delayRisk.badgeClass || (summary.delayRisk.delayed ? 'error' : 'success')}">${escapeHtml(summary.delayRisk.label || (summary.delayRisk.delayed ? 'Likely delayed' : 'On track'))}</span> <span class="muted">(${(summary.delayRisk.risk * 100).toFixed(0)}%)</span></dd>` : ''}
     </dl>
     ${customerServiceMsg}
     ${summary.delayRisk && summary.delayRisk.message ? `<p class="delay-risk-msg">${escapeHtml(summary.delayRisk.message)}</p>` : ''}
@@ -98,10 +98,13 @@ function renderTasks(summary) {
   if (sequence && sequence.length) {
     html += `<p class="sequence"><strong>Sequence:</strong> ${escapeHtml(sequence.join(' → '))}</p>`;
   }
+  const taskAssignments = summary?.taskAssignments;
   if (tasks && tasks.length) {
     html += '<ul class="task-list">';
     tasks.forEach(t => {
-      html += `<li><code>${escapeHtml(t.taskId)}</code> ${escapeHtml(t.taskType || '')} — ${escapeHtml(t.estimatedDuration ?? '')}h</li>`;
+      const assignment = taskAssignments && taskAssignments.find(a => a.taskId === t.taskId);
+      const assignStr = assignment ? ` → ${escapeHtml(assignment.staffName)}` : '';
+      html += `<li><code>${escapeHtml(t.taskId)}</code> ${escapeHtml(t.taskType || '')} — ${escapeHtml(t.estimatedDuration ?? '')}h${assignStr}</li>`;
     });
     html += '</ul>';
   }
@@ -137,12 +140,24 @@ function renderWorkforce(summary) {
   }
 
   let html = '';
-  if (selected) {
+  const taskAssignments = summary?.taskAssignments;
+  const assignedStaffNames = summary?.assignedStaffNames;
+  if (taskAssignments && taskAssignments.length) {
+    html += '<p class="selected-staff"><strong>Tasks by role:</strong></p><ul class="task-assign-list">';
+    taskAssignments.forEach(a => {
+      html += `<li><code>${escapeHtml(a.taskType)}</code> (${escapeHtml(a.taskId)}) → ${escapeHtml(a.staffName)} <span class="muted">${escapeHtml(a.staffId)}</span></li>`;
+    });
+    html += '</ul>';
+    if (assignedStaffNames && assignedStaffNames.length) {
+      html += `<p><strong>Assigned staff:</strong> ${escapeHtml(assignedStaffNames.join(', '))}</p>`;
+    }
+  } else if (selected) {
     html += `<p class="selected-staff"><strong>Selected:</strong> ${escapeHtml(selected.name)} (${escapeHtml(selected.staffId)})</p>`;
     if (selected.reason) html += `<p class="reason">${escapeHtml(selected.reason)}</p>`;
   }
   if (coordination) {
-    html += `<p><strong>Assigned:</strong> ${escapeHtml(coordination.assignedStaffName)} · New workload: ${escapeHtml(coordination.newWorkload)}h</p>`;
+    html += `<p><strong>Assigned:</strong> ${escapeHtml(coordination.assignedStaffName || (coordination.taskAssignments && coordination.taskAssignments.map(a => a.staffName).join(', ')) || '—')}</p>`;
+    if (coordination.newWorkload != null) html += `<p class="muted">New workload: ${coordination.newWorkload}h</p>`;
   }
   if (candidates && candidates.length) {
     html += '<details class="candidates-list"><summary>Candidates</summary><ul>';

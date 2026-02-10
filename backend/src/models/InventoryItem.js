@@ -26,6 +26,7 @@ class InventoryItem {
     minStockLevel,      // Minimum stock before reorder alert (number)
     reorderPoint,       // Trigger reorder when stock hits this level (number)
     pricePerUnit,       // Price per unit (optional, for order value calculation)
+    imageUrl,           // Product image URL (optional, for e-commerce display)
     location,           // Warehouse location (e.g., "A-12", "Shelf-5")
     lastRestocked,      // ISO timestamp of last restock
     updatedAt           // ISO timestamp of last update
@@ -41,6 +42,7 @@ class InventoryItem {
     this.minStockLevel = minStockLevel || 0;
     this.reorderPoint = reorderPoint || 0;
     this.pricePerUnit = pricePerUnit || 0;
+    this.imageUrl = imageUrl || '';
     this.location = location || '';
     this.lastRestocked = lastRestocked || null;
     this.updatedAt = updatedAt || new Date().toISOString();
@@ -83,6 +85,7 @@ class InventoryItem {
       minStockLevel: this.minStockLevel,
       reorderPoint: this.reorderPoint,
       pricePerUnit: this.pricePerUnit,
+      imageUrl: this.imageUrl,
       location: this.location,
       lastRestocked: this.lastRestocked,
       updatedAt: this.updatedAt,

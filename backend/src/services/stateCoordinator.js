@@ -26,7 +26,10 @@ class StateCoordinator {
   constructor() {
     this.eventLog = [];
     this.lastRunLog = [];
-    this.lastRunSummary = null; // Structured summary for dashboard (order flow steps, tasks, staff, etc.)
+    this.pendingRunLog = []; // Lines logged before ORDER_RECEIVED (e.g. API, InputGateway, parser) — prepended for WhatsApp
+    this.lastRunSummary = null;
+    this.lastWhatsAppRunLog = [];
+    this.lastWhatsAppRunSummary = null; // Snapshot when channel is whatsapp (for WhatsApp Log UI)
     this.isProcessing = false;
     
     // Agent placeholders (will be wired up later)
@@ -99,6 +102,15 @@ class StateCoordinator {
     else console.log(text);
   }
 
+  /**
+   * Append a line to pending run log (prepended to lastRunLog for next WhatsApp run so web shows entire flow)
+   */
+  appendPendingRunLog(text, type = 'info') {
+    this.pendingRunLog.push({ type, text });
+    if (type === 'error') console.error(text);
+    else console.log(text);
+  }
+
   getLastRunLog() {
     return this.lastRunLog || [];
   }
@@ -108,6 +120,21 @@ class StateCoordinator {
    */
   getLastRunSummary() {
     return this.lastRunSummary;
+  }
+
+  getLastWhatsAppRunLog() {
+    return this.lastWhatsAppRunLog || [];
+  }
+
+  getLastWhatsAppRunSummary() {
+    return this.lastWhatsAppRunSummary;
+  }
+
+  _snapshotWhatsAppRunIfNeeded(channel) {
+    if (channel === 'whatsapp') {
+      this.lastWhatsAppRunLog = [...this.lastRunLog];
+      this.lastWhatsAppRunSummary = this.lastRunSummary ? { ...this.lastRunSummary } : null;
+    }
   }
 
   _setSummary(partial) {
@@ -121,6 +148,11 @@ class StateCoordinator {
   async _handleOrderReceived(event) {
     const { channel, data } = event.data;
     this.lastRunLog = [];
+    // Prepend any lines logged before this run (API, InputGateway, etc.) so web log matches terminal
+    if (channel === 'whatsapp' && this.pendingRunLog.length > 0) {
+      this.lastRunLog = [...this.pendingRunLog];
+      this.pendingRunLog = [];
+    }
     this.lastRunSummary = { channel, timestamp: new Date().toISOString(), status: null, steps: [] };
 
     this._runLog(`\n[StateCoordinator] 🎯 ORDER_RECEIVED from ${channel}`);
@@ -134,7 +166,8 @@ class StateCoordinator {
         return { status: 'pending', message: 'Order Agent not available' };
       }
       
-      const orderIntent = await this.orderAgent.processOrder(data, channel);
+      const runLogger = (text, type) => this._runLog(text, type || 'info');
+      const orderIntent = await this.orderAgent.processOrder(data, channel, { log: runLogger });
       this._runLog(`[StateCoordinator] ✅ OrderIntent created: ${orderIntent.intentId}`);
       this._setSummary({
         orderIntentId: orderIntent.intentId,
@@ -155,6 +188,7 @@ class StateCoordinator {
       if (!this.inventoryAgent) {
         this._runLog(`[StateCoordinator] ⚠️  Inventory Agent not implemented yet`);
         this._runLog(`[StateCoordinator] 🛑 Stopping here until Inventory Agent is ready\n`);
+        this._snapshotWhatsAppRunIfNeeded(channel);
         return { 
           status: 'partial', 
           message: 'OrderIntent created, waiting for Inventory Agent',
@@ -178,6 +212,7 @@ class StateCoordinator {
           inventory: { status: 'NOT_AVAILABLE', reason: inventoryResult.reason }
         });
         this._runLog(`[StateCoordinator] 🛑 OrderIntent ${orderIntent.intentId} rejected\n`);
+        this._snapshotWhatsAppRunIfNeeded(channel);
         return {
           status: 'rejected',
           message: 'Insufficient inventory',
@@ -259,92 +294,67 @@ class StateCoordinator {
       }));
       stateManager.calculateSystemState();
 
-      this._runLog(`[StateCoordinator] ➤ Step 5: Routing to Workforce Agent...`);
-      const workforceResult = workforceAgent.selectBestStaffForOrder(persistedOrder, stateManager);
+      this._runLog(`[StateCoordinator] ➤ Step 5–6: Workforce & Coordination (assign each task by role: PRODUCTION / QUALITY / PACKING)...`);
+      const orderTasks = stateManager.getTasksByOrder(persistedOrder.orderId);
+      const assignResult = coordinationAgent.assignTasksByRole(
+        orderTasks,
+        stateManager,
+        (ev) => {
+          this._logEvent(ev);
+          this._runLog(`[StateCoordinator] 📥 Event: ${ev.type}`);
+        }
+      );
+
       let assignedStaffId = null;
       let assignedStaffName = null;
 
-      if (workforceResult.candidates && workforceResult.candidates.length > 0) {
-        this._runLog(`[StateCoordinator]   Candidates (${workforceResult.candidates.length}):`);
-        workforceResult.candidates.forEach((c, i) => {
-          const marker = workforceResult.staff && c.staffId === workforceResult.staff.staffId ? ' ← selected' : '';
-          this._runLog(`[StateCoordinator]     ${i + 1}. ${c.name} (${c.staffId}): ${c.currentWorkload}h current, ${c.freeCapacity}h free${marker}`);
+      if (assignResult.assignments && assignResult.assignments.length > 0) {
+        assignResult.assignments.forEach((a, i) => {
+          this._runLog(`[StateCoordinator]   ${a.taskType} (${a.taskId}) → ${a.staffName} (${a.staffId})`);
         });
       }
 
       this._setSummary({
-        steps: [...(this.lastRunSummary.steps || []), { step: 5, name: 'Workforce Agent', status: workforceResult.staff ? 'ok' : 'warn', detail: workforceResult.staff ? workforceResult.reason : workforceResult.reason }],
-        candidates: workforceResult.candidates || [],
-        selectedStaff: workforceResult.staff ? { staffId: workforceResult.staff.staffId, name: workforceResult.staff.name, reason: workforceResult.reason } : null
+        steps: [...(this.lastRunSummary.steps || []), { step: 5, name: 'Workforce Agent', status: assignResult.success ? 'ok' : 'warn', detail: assignResult.success ? 'Per-task by role' : assignResult.message }, { step: 6, name: 'Coordination Agent', status: assignResult.success ? 'ok' : 'warn', detail: assignResult.message }],
+        taskAssignments: assignResult.assignments || [],
+        assignedStaffNames: assignResult.assignedStaffNames || [],
+        selectedStaff: assignResult.assignments && assignResult.assignments[0] ? { staffId: assignResult.assignments[0].staffId, name: assignResult.assignments[0].staffName, reason: assignResult.message } : null
       });
 
-      if (workforceResult.staff) {
-        this._logEvent(createEvent(EventTypes.STAFF_SELECTED, {
-          orderId: persistedOrder.orderId,
-          staffId: workforceResult.staff.staffId,
-          staffName: workforceResult.staff.name,
-          totalDurationHours: workforceResult.totalDuration,
-          reason: workforceResult.reason,
-          candidates: workforceResult.candidates
-        }));
-        this._runLog(`[StateCoordinator] ✅ Staff selected: ${workforceResult.staff.name} (${workforceResult.staff.staffId})`);
-        this._runLog(`[StateCoordinator]   Reason: ${workforceResult.reason}`);
+      if (assignResult.success) {
+        assignedStaffId = assignResult.assignments[0].staffId;
+        assignedStaffName = assignResult.assignedStaffNames.join(', ');
+        stateManager.updateOrder(persistedOrder.orderId, {
+          status: 'ASSIGNED',
+          assignedStaffId,
+          assignedStaffName
+        });
+        this._runLog(`[StateCoordinator] ✅ Tasks assigned by role: ${assignResult.message}`);
 
-        this._runLog(`[StateCoordinator] ➤ Step 6: Routing to Coordination Agent...`);
-        const orderTasks = stateManager.getTasksByOrder(persistedOrder.orderId);
-        const assignResult = coordinationAgent.assignTasksToStaff(
-          orderTasks,
-          workforceResult.staff.staffId,
-          stateManager,
-          (ev) => {
-            this._logEvent(ev);
-            this._runLog(`[StateCoordinator] 📥 Event: ${ev.type}`);
-          }
-        );
-
-        if (assignResult.success) {
-          assignedStaffId = workforceResult.staff.staffId;
-          assignedStaffName = assignResult.staffName;
-          stateManager.updateOrder(persistedOrder.orderId, {
-            status: 'ASSIGNED',
-            assignedStaffId,
-            assignedStaffName
-          });
-          this._runLog(`[StateCoordinator] ✅ Tasks assigned to ${assignResult.staffName}; new workload: ${assignResult.newWorkload}h`);
-
-          const delayPred = delayPredictor.predict(persistedOrder, {
-            timeRequiredHours: timeAndDeadline.totalHours,
-            staffWorkload: assignResult.newWorkload,
-            numCandidates: workforceResult.candidates?.length ?? 0,
-            numTasks: tasks.length
-          });
-          this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred.message}`);
-          this._setSummary({
-            steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'ok', detail: `Assigned to ${assignResult.staffName}; workload ${assignResult.newWorkload}h` }],
-            coordination: { assignedStaffName: assignResult.staffName, newWorkload: assignResult.newWorkload },
-            delayRisk: { risk: delayPred.risk, delayed: delayPred.delayed, message: delayPred.message }
-          });
-        } else {
-          this._runLog(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
-          const delayPred2 = delayPredictor.predict(persistedOrder, {
-            timeRequiredHours: timeAndDeadline.totalHours,
-            staffWorkload: workforceResult.staff?.currentWorkload ?? 0,
-            numCandidates: workforceResult.candidates?.length ?? 0,
-            numTasks: tasks.length
-          });
-          this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred2.message}`);
-          this._setSummary({ steps: [...(this.lastRunSummary.steps || []), { step: 6, name: 'Coordination Agent', status: 'warn', detail: assignResult.message }], delayRisk: { risk: delayPred2.risk, delayed: delayPred2.delayed, message: delayPred2.message } });
-        }
-      } else {
-        this._runLog(`[StateCoordinator] ⚠️  No staff available: ${workforceResult.reason}`);
-        const delayPred3 = delayPredictor.predict(persistedOrder, {
+        const delayPred = delayPredictor.predict(persistedOrder, {
           timeRequiredHours: timeAndDeadline.totalHours,
-          staffWorkload: 0,
-          numCandidates: workforceResult.candidates?.length ?? 0,
+          staffWorkload: assignResult.assignments.reduce((sum, a) => {
+            const s = stateManager.getStaff(a.staffId);
+            return sum + (s ? s.currentWorkload : 0);
+          }, 0) / Math.max(assignResult.assignments.length, 1),
+          numCandidates: assignResult.assignments.length,
           numTasks: tasks.length
         });
-        this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred3.message}`);
-        this._setSummary({ delayRisk: { risk: delayPred3.risk, delayed: delayPred3.delayed, message: delayPred3.message } });
+        this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred.message}`);
+        this._setSummary({
+          coordination: { assignedStaffName: assignResult.assignedStaffNames.join(', '), taskAssignments: assignResult.assignments },
+          delayRisk: { ...delayPred }
+        });
+      } else {
+        this._runLog(`[StateCoordinator] ⚠️  Assignment failed: ${assignResult.message}`);
+        const delayPred2 = delayPredictor.predict(persistedOrder, {
+          timeRequiredHours: timeAndDeadline.totalHours,
+          staffWorkload: 0,
+          numCandidates: 0,
+          numTasks: tasks.length
+        });
+        this._runLog(`[StateCoordinator] 🤖 Delay Risk Predictor: ${delayPred2.message}`);
+        this._setSummary({ delayRisk: { ...delayPred2 } });
       }
 
       stateManager.calculateSystemState();
@@ -365,6 +375,7 @@ class StateCoordinator {
           critic: { approved: false, reason: criticResult.reason, issues: criticResult.issues }
         });
         this._runLog(`[StateCoordinator] 🛑 Replan requested; stopping before execution\n`);
+        this._snapshotWhatsAppRunIfNeeded(channel);
         return {
           status: 'plan_rejected',
           message: 'Critic rejected task plan; replan requested',
@@ -383,6 +394,7 @@ class StateCoordinator {
       this._runLog(`[StateCoordinator] ➤ Step 8: Routing to Task Executor...`);
       this._runLog(`[StateCoordinator] ✅ Order processing complete\n`);
 
+      this._snapshotWhatsAppRunIfNeeded(channel);
       return {
         status: 'success',
         message: 'Order created and processing flow complete',
@@ -393,6 +405,7 @@ class StateCoordinator {
       
     } catch (error) {
       this._runLog(`[StateCoordinator] ❌ Error in order processing: ${error.message}`, 'error');
+      this._snapshotWhatsAppRunIfNeeded(channel);
       return { status: 'error', message: error.message };
     }
   }

@@ -33,23 +33,25 @@ class OrderAgent {
   /**
    * Process order from any channel
    * Creates OrderIntent (NOT confirmed Order)
-   * 
+   *
    * @param {Object} data - Normalized order data from Input Gateway
    * @param {string} channel - "website" or "whatsapp"
+   * @param {{ log?: (text: string, type?: string) => void }} options - Optional logger for run log (so web shows same as terminal)
    * @returns {Promise<OrderIntent>}
    */
-  async processOrder(data, channel) {
-    console.log('\n[OrderAgent] 📝 Processing order...');
-    console.log('[OrderAgent] Channel:', channel);
-    
+  async processOrder(data, channel, options = {}) {
+    const log = options.log ? (text, type) => options.log(text, type) : (text, type) => (type === 'error' ? console.error(text) : console.log(text));
+    log('\n[OrderAgent] 📝 Processing order...');
+    log('[OrderAgent] Channel: ' + channel);
+
     let orderData;
-    
+
     if (channel === 'website') {
       // Website data is already structured
       orderData = this._processWebsiteOrder(data);
     } else if (channel === 'whatsapp') {
       // WhatsApp needs parsing
-      orderData = await this._processWhatsAppOrder(data);
+      orderData = await this._processWhatsAppOrder(data, { log });
     } else {
       throw new Error(`Unknown channel: ${channel}`);
     }
@@ -92,22 +94,24 @@ class OrderAgent {
 
   /**
    * Process WhatsApp order (needs LLM parsing)
+   * @param {{ log?: (text: string, type?: string) => void }} opts - Logger for run log
    */
-  async _processWhatsAppOrder(data) {
-    console.log('[OrderAgent] 💬 Processing WhatsApp order (needs parsing)');
-    console.log('[OrderAgent] Message:', data.message);
-    
+  async _processWhatsAppOrder(data, opts = {}) {
+    const log = opts.log ? (text, type) => opts.log(text, type) : (text, type) => (type === 'error' ? console.error(text) : console.log(text));
+    log('[OrderAgent] 💬 Processing WhatsApp order (needs parsing)');
+    log('[OrderAgent] Message: ' + (data.message || ''));
+
     // Use WhatsAppParser to extract structured data
-    console.log('[OrderAgent] ➤ Calling WhatsAppParser...');
-    const parsed = await whatsappParser.parseMessage(data.message);
-    
-    console.log('[OrderAgent] ✅ Parsed result:');
-    console.log('[OrderAgent]   Product:', parsed.product);
-    console.log('[OrderAgent]   Quantity:', parsed.quantity);
-    console.log('[OrderAgent]   Unit:', parsed.unit);
-    console.log('[OrderAgent]   Priority:', parsed.priority);
-    console.log('[OrderAgent]   Deadline:', parsed.deadline);
-    
+    log('[OrderAgent] ➤ Calling WhatsAppParser...');
+    const parsed = await whatsappParser.parseMessage(data.message, { log });
+
+    log('[OrderAgent] ✅ Parsed result:');
+    log('[OrderAgent]   Product: ' + (parsed.product ?? ''));
+    log('[OrderAgent]   Quantity: ' + (parsed.quantity ?? ''));
+    log('[OrderAgent]   Unit: ' + (parsed.unit ?? ''));
+    log('[OrderAgent]   Priority: ' + (parsed.priority ?? ''));
+    log('[OrderAgent]   Deadline: ' + (parsed.deadline ?? ''));
+
     // Return structured format
     return {
       customerId: data.customerId, // Phone number

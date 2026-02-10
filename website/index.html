@@ -12,14 +12,16 @@
       <h1>OPERATIONS</h1>
       <p class="tagline">Browse products · Select · Quantity · Place order · Agents handle the rest</p>
       <nav class="nav">
-        <a href="overview.html">Dashboard Overview →</a>
-        <a href="dashboard.html">Agents Log →</a>
+        <a href="overview.html">Dashboard Overview</a>
+        <a href="dashboard.html">Agents Log</a>
+        <a href="whatsapp.html">WhatsApp Log</a>
       </nav>
     </header>
 
     <main class="main">
       <section class="card products-section">
-        <h2>Products</h2>
+        <h2>Shop — Clothing &amp; apparel</h2>
+        <p class="hint">Select a product, set quantity and priority, then place order. Agents handle inventory, tasks, and assignments.</p>
         <div id="products-grid" class="products-grid">
           <div class="muted">Loading products…</div>
         </div>
@@ -52,12 +54,10 @@
       </section>
 
       <section class="card result-section" id="result-section" hidden>
-        <h2>Order result</h2>
-        <p class="hint">Order Agent → Inventory → Tasks → Workforce → Critic</p>
         <div id="result-content" class="result-content"></div>
       </section>
 
-      <section class="card orders-section">
+      <section class="card orders-section" id="orders-section" hidden aria-hidden="true">
         <h2>Recent orders</h2>
         <button type="button" id="refresh-orders" class="btn-secondary">Refresh list</button>
         <div id="orders-list" class="orders-list"></div>

@@ -226,9 +226,10 @@ function renderManageStaffList(staff) {
   list.innerHTML = staff.map(function (s) {
     var status = (s.status || 'ONLINE').toUpperCase();
     var workload = s.currentWorkload != null ? s.currentWorkload : 0;
+    var role = s.role || 'PRODUCTION';
     return (
       '<div class="manage-item" data-staff-id="' + escapeHtml(s.staffId) + '">' +
-      '<div class="name">' + escapeHtml(s.name) + ' (' + escapeHtml(s.staffId) + ')</div>' +
+      '<div class="name">' + escapeHtml(s.name) + ' (' + escapeHtml(s.staffId) + ') <span class="staff-role-badge">' + escapeHtml(role) + '</span></div>' +
       '<div class="manage-item-row">' +
       '<div><label>Status</label><select class="manage-status">' +
       '<option value="ONLINE"' + (status === 'ONLINE' ? ' selected' : '') + '>ONLINE</option>' +

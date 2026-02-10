@@ -1,23 +1,79 @@
 /**
  * WORKFORCE AGENT
  *
- * Responsibilities:
- * - Check staff availability
- * - Select best candidate for an order's tasks
+ * - Check staff availability by role (PRODUCTION, QUALITY, PACKING, DELIVERY)
+ * - Select best candidate per task so each task can go to a different employee
  *
- * Rules: No LLM, deterministic logic.
- * Best = lowest current workload among staff who can take the total task duration.
+ * Task type → Role: PREPARE → PRODUCTION, QUALITY_CHECK → QUALITY, PACK → PACKING
  */
 
+const TASK_TYPE_TO_ROLE = {
+  PREPARE: 'PRODUCTION',
+  QUALITY_CHECK: 'QUALITY',
+  PACK: 'PACKING',
+  DELIVERY: 'DELIVERY'
+};
+
 /**
- * Select the best staff member for an order (all tasks assigned to one person).
- * Deterministic: choose online staff with lowest current workload who can fit total duration.
- *
- * @param {Order} order - Order with taskIds (TASKS_PLANNED)
- * @param {Object} stateManager - State manager
- * @returns {{ staff: StaffMember | null, totalDuration: number, reason: string }}
+ * Select best staff for a single task by role, skill, and work hours.
+ * Only considers staff who are within their shift and have enough remaining shift hours for the task.
+ * Picks lowest current workload first.
  */
-function selectBestStaffForOrder(order, stateManager) {
+function selectBestStaffForTask(task, stateManager, now) {
+  const refNow = now || new Date();
+  const taskType = (task.taskType || '').toUpperCase();
+  const role = TASK_TYPE_TO_ROLE[taskType] || 'PRODUCTION';
+  const requiredSkill = task.requiredSkill || 'assembly';
+  const duration = task.estimatedDuration || 0;
+
+  const availableStaff = stateManager.getAvailableStaff();
+  if (availableStaff.length === 0) {
+    return { staff: null, reason: 'NO_AVAILABLE_STAFF', candidates: [] };
+  }
+
+  const byRole = availableStaff.filter(s => s.role === role);
+  const withSkill = byRole.length > 0 ? byRole : availableStaff.filter(s => s.hasSkill && s.hasSkill(requiredSkill));
+  const pool = withSkill.length > 0 ? withSkill : availableStaff;
+
+  // Prefer staff within shift with enough remaining shift hours; fallback to capacity-only (e.g. outside shift or demo)
+  let canTake = pool.filter(s => s.canTakeTaskWithinWorkHours && s.canTakeTaskWithinWorkHours(duration, refNow));
+  if (canTake.length === 0) {
+    canTake = pool.filter(s => s.canTakeTask(duration));
+  }
+  if (canTake.length === 0) {
+    return {
+      staff: null,
+      reason: `NO_STAFF_FOR_${taskType} (role ${role}, need ${duration}h; check work hours and capacity)`,
+      candidates: []
+    };
+  }
+
+  canTake.sort((a, b) => a.currentWorkload - b.currentWorkload);
+  const best = canTake[0];
+  const remainingShift = best.getRemainingShiftHours ? best.getRemainingShiftHours(refNow) : best.getRemainingCapacity();
+  const candidates = canTake.slice(0, 3).map(s => ({
+    staffId: s.staffId,
+    name: s.name,
+    role: s.role,
+    currentWorkload: s.currentWorkload,
+    freeCapacity: s.getRemainingCapacity(),
+    remainingShiftHours: s.getRemainingShiftHours ? s.getRemainingShiftHours(refNow) : null,
+    maxCapacity: s.maxCapacity
+  }));
+
+  return {
+    staff: best,
+    reason: `${taskType} → ${role}: ${best.name} (${best.currentWorkload}h done, ${Number(remainingShift).toFixed(2)}h left in shift, ${duration}h task)`,
+    candidates
+  };
+}
+
+/**
+ * Select the best staff for an order (all tasks to one person) — fallback.
+ * Considers work hours: only staff within shift with enough remaining shift hours for total duration.
+ */
+function selectBestStaffForOrder(order, stateManager, now) {
+  const refNow = now || new Date();
   const tasks = stateManager.getTasksByOrder(order.orderId);
   if (!tasks || tasks.length === 0) {
     return { staff: null, totalDuration: 0, reason: 'NO_TASKS', candidates: [] };
@@ -30,13 +86,20 @@ function selectBestStaffForOrder(order, stateManager) {
     return { staff: null, totalDuration, reason: 'NO_AVAILABLE_STAFF', candidates: [] };
   }
 
-  // Filter: can take total duration (currentWorkload + totalDuration <= maxCapacity)
-  const canTake = availableStaff.filter(s => s.canTakeTask(totalDuration));
+  // Filter: capacity AND within work hours, total duration fits in remaining shift hours
+  const canTake = availableStaff.filter(s =>
+    s.canTakeTaskWithinWorkHours && s.canTakeTaskWithinWorkHours(totalDuration, refNow)
+  );
   if (canTake.length === 0) {
-    return { staff: null, totalDuration, reason: 'NO_STAFF_WITH_CAPACITY', candidates: [] };
+    const withCapacity = availableStaff.filter(s => s.canTakeTask(totalDuration));
+    return {
+      staff: null,
+      totalDuration,
+      reason: `NO_STAFF_WITH_WORK_HOURS (need ${totalDuration}h in shift; ${withCapacity.length} with capacity)`,
+      candidates: []
+    };
   }
 
-  // Deterministic: sort by currentWorkload ascending (lowest first), pick first
   canTake.sort((a, b) => a.currentWorkload - b.currentWorkload);
   const best = canTake[0];
 
@@ -59,6 +122,8 @@ function selectBestStaffForOrder(order, stateManager) {
 }
 
 const workforceAgent = {
+  TASK_TYPE_TO_ROLE,
+  selectBestStaffForTask,
   selectBestStaffForOrder
 };
 

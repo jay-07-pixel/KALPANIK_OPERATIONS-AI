@@ -349,6 +349,17 @@
   margin-bottom: 0.5rem;
 }
 
+.staff-role-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--accent);
+  font-weight: 500;
+  margin-left: 0.35rem;
+}
+
 .manage-item-row, .restock-item-row {
   display: flex;
   gap: 0.5rem;

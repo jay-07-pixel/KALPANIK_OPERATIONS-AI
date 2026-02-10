@@ -6,11 +6,12 @@ Agentic AI system for MSME operations — order management, workforce scheduling
 
 ## Features
 
-- **Shop** — Place orders (website + WhatsApp)
-- **Dashboard Overview** — KPIs, live orders, workforce, stock levels
-- **Agents Log** — Structured view of last order flow, delay risk
-- **Delay/Risk Predictor** — ML model predicts order delay likelihood
-- **Manage Workforce** — Add/remove staff, update status
+- **Shop** — Place orders (website + WhatsApp); customer sees only “Your order has been placed!” and order ID
+- **Dashboard Overview** — KPIs, live orders, workforce (Manage staff), stock levels
+- **Agents Log** — Structured view of last order flow, delay risk, pipeline steps, tasks & time
+- **WhatsApp Log** — Full terminal-style log of WhatsApp order flow (API → agents → completion) on the web
+- **Delay/Risk Predictor** — ML model; labels: **No tension**, **A bit**, **High chances delayed** (not rule-based)
+- **Manage Workforce** — Add/remove staff, update roles and shift times
 - **Restock** — Add inventory
 
 ---
@@ -39,6 +40,7 @@ The server runs on [http://localhost:3000](http://localhost:3000).
 - **Shop:** [http://localhost:3000](http://localhost:3000) — Browse products, place orders
 - **Dashboard Overview:** [http://localhost:3000/overview.html](http://localhost:3000/overview.html)
 - **Agents Log:** [http://localhost:3000/dashboard.html](http://localhost:3000/dashboard.html)
+- **WhatsApp Log:** [http://localhost:3000/whatsapp.html](http://localhost:3000/whatsapp.html) — Terminal-style log of last WhatsApp order
 
 ### 3. Test WhatsApp orders (Insomnia / Postman)
 
@@ -52,7 +54,7 @@ The server runs on [http://localhost:3000](http://localhost:3000).
 ```json
 {
   "from": "+919876543210",
-  "message": "Hi, I need 10 boxes of Widget A by tomorrow 3 pm"
+  "message": "Hi, I need 2 Cotton Crew T-Shirt by tomorrow 11pm. Urgent!"
 }
 ```
 
@@ -61,7 +63,7 @@ Or use `phone` instead of `from`:
 ```json
 {
   "phone": "+919876543210",
-  "message": "I need 15 boxes of Widget B. Urgent!"
+  "message": "I need 1 Cotton Crew T-Shirt by tomorrow. Urgent!"
 }
 ```
 
@@ -87,8 +89,9 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step.
 OPERATIONS/
 ├── backend/          # Node.js API (serves website/ as static)
 │   ├── src/          # Agents, routes, services
-│   └── ml/           # Delay predictor (Olist dataset, model)
-├── website/          # Static frontend (served by backend)
+│   └── ml/           # Delay predictor (train script, model, API-aligned dataset)
+├── website/          # Static frontend (shop, overview, dashboard, WhatsApp log)
+├── scripts/          # Utilities (e.g. technical_flowchart.py)
 ├── docs/             # Architecture docs
 ├── railway.json      # Railway config
 └── DEPLOYMENT.md     # Deploy guide

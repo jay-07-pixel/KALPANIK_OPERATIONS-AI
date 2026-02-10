@@ -28,7 +28,9 @@ router.get('/products', (req, res) => {
       unit: p.unit,
       availableStock: p.availableStock ?? (p.currentStock - (p.reservedStock || 0)),
       currentStock: p.currentStock,
-      category: p.category || ''
+      category: p.category || '',
+      imageUrl: p.imageUrl || '',
+      pricePerUnit: p.pricePerUnit != null ? p.pricePerUnit : 0
     }));
     res.status(200).json({ products, count: products.length });
   } catch (error) {
@@ -48,6 +50,21 @@ router.get('/last-run', (req, res) => {
     res.status(200).json({ runLog, summary, count: runLog.length });
   } catch (error) {
     console.error('[API] Error getting last run log:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /order/last-run/whatsapp
+ * Last WhatsApp order run (for WhatsApp Log UI)
+ */
+router.get('/last-run/whatsapp', (req, res) => {
+  try {
+    const runLog = stateCoordinator.getLastWhatsAppRunLog();
+    const summary = stateCoordinator.getLastWhatsAppRunSummary();
+    res.status(200).json({ runLog, summary, count: runLog.length });
+  } catch (error) {
+    console.error('[API] Error getting last WhatsApp run:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -160,9 +177,18 @@ router.post('/restock', (req, res) => {
   }
 });
 
+// Role → skills for task assignment (PRODUCTION, QUALITY, PACKING, DELIVERY)
+function skillsForRole(role) {
+  const r = (role || 'PRODUCTION').toUpperCase();
+  if (r === 'QUALITY') return ['quality_check'];
+  if (r === 'PACKING') return ['packing'];
+  if (r === 'DELIVERY') return ['packing'];
+  return ['assembly'];
+}
+
 /**
  * POST /order/staff
- * Add new staff member (Manage button on dashboard)
+ * Add new staff member (Manage button on dashboard). Role dropdown: PRODUCTION, QUALITY, PACKING, DELIVERY.
  * Body: { name: string, role?: string, status?: string, maxCapacity?: number, phone?: string }
  */
 router.post('/staff', (req, res) => {
@@ -178,12 +204,13 @@ router.post('/staff', (req, res) => {
     }, 0);
     const staffId = `STAFF-${String(maxNum + 1).padStart(3, '0')}`;
     const { StaffMember } = require('../models');
+    const roleVal = (role || 'PRODUCTION').toUpperCase();
     const staff = new StaffMember({
       staffId,
       name: name.trim(),
       phone: phone || '',
-      role: role || 'PRODUCTION',
-      skills: ['assembly', 'packing'],
+      role: roleVal,
+      skills: skillsForRole(roleVal),
       status: (status || 'ONLINE').toUpperCase(),
       currentWorkload: 0,
       maxCapacity: maxCapacity != null ? Math.min(24, Math.max(1, Number(maxCapacity) || 8)) : 8
@@ -332,7 +359,8 @@ router.post('/website', async (req, res) => {
 router.post('/whatsapp', async (req, res) => {
   try {
     console.log('\n[API] POST /order/whatsapp');
-    
+    stateCoordinator.appendPendingRunLog('\n[API] POST /order/whatsapp');
+
     const result = await inputGateway.processWhatsAppOrder(req.body);
     const coordinatorResult = result.result || {};
     const customerId = result.data?.customerId || req.body?.phone || req.body?.from;

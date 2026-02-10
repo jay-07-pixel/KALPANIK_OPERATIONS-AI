@@ -53,7 +53,56 @@ class StaffMember {
   }
 
   /**
-   * Check if staff can take on additional work
+   * Parse "HH:MM" or "H:MM" to minutes since midnight (for a given date).
+   */
+  static _timeToMinutes(timeStr, refDate) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const [h, m] = timeStr.trim().split(':').map(s => parseInt(s, 10) || 0);
+    return h * 60 + m;
+  }
+
+  /**
+   * Current time in minutes since midnight (same day as refDate).
+   */
+  static _nowMinutes(refDate) {
+    const d = refDate || new Date();
+    return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+  }
+
+  /**
+   * Whether the given time falls within this staff's shift (shiftStart–shiftEnd).
+   */
+  isWithinShift(now) {
+    const ref = now || new Date();
+    const nowM = StaffMember._nowMinutes(ref);
+    const startM = StaffMember._timeToMinutes(this.shiftStart, ref);
+    const endM = StaffMember._timeToMinutes(this.shiftEnd, ref);
+    if (endM > startM) return nowM >= startM && nowM < endM;
+    return nowM >= startM || nowM < endM; // overnight shift
+  }
+
+  /**
+   * Remaining hours left in the current shift from `now` (capped by max capacity).
+   */
+  getRemainingShiftHours(now) {
+    const ref = now || new Date();
+    const nowM = StaffMember._nowMinutes(ref);
+    const startM = StaffMember._timeToMinutes(this.shiftStart, ref);
+    const endM = StaffMember._timeToMinutes(this.shiftEnd, ref);
+    let remainingMinutes = 0;
+    if (endM > startM) {
+      if (nowM < startM) remainingMinutes = endM - startM;
+      else if (nowM < endM) remainingMinutes = endM - nowM;
+    } else {
+      if (nowM >= startM) remainingMinutes = (24 * 60 - nowM) + endM;
+      else if (nowM < endM) remainingMinutes = endM - nowM;
+    }
+    const remainingHours = remainingMinutes / 60;
+    return Math.min(remainingHours, this.getRemainingCapacity());
+  }
+
+  /**
+   * Check if staff can take on additional work (capacity only).
    */
   canTakeTask(taskDurationHours) {
     return (
@@ -63,7 +112,18 @@ class StaffMember {
   }
 
   /**
-   * Calculate remaining capacity
+   * Check if staff can take task considering work hours: within shift and task fits in remaining shift hours.
+   */
+  canTakeTaskWithinWorkHours(taskDurationHours, now) {
+    if (!this.canTakeTask(taskDurationHours)) return false;
+    const ref = now || new Date();
+    if (!this.isWithinShift(ref)) return false;
+    const remainingInShift = this.getRemainingShiftHours(ref);
+    return taskDurationHours <= remainingInShift;
+  }
+
+  /**
+   * Calculate remaining capacity (hours left before hitting maxCapacity).
    */
   getRemainingCapacity() {
     return Math.max(0, this.maxCapacity - this.currentWorkload);

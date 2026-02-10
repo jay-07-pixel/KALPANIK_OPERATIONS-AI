@@ -21,6 +21,7 @@ const orderAgent = require('./agents/orderAgent');
 const inventoryAgent = require('./agents/inventoryAgent');
 const stateManager = require('./state/stateManager');
 const { InventoryItem, StaffMember } = require('./models');
+const { getCatalogForSeed } = require('./data/productCatalog');
 
 // Middleware
 app.use(cors());
@@ -42,29 +43,11 @@ console.log('[Server] Agents wired: Order Agent, Inventory Agent');
 // Seed inventory and staff so orders can be processed (in-memory state; seed on startup)
 function seedState() {
   if (stateManager.getAllInventory().length === 0) {
-    stateManager.addInventoryItem(new InventoryItem({
-      productId: 'PROD-123',
-      productName: 'Widget A',
-      sku: 'WID-A-001',
-      category: 'Electronics',
-      unit: 'boxes',
-      currentStock: 200,
-      reservedStock: 0,
-      minStockLevel: 20,
-      reorderPoint: 30
-    }));
-    stateManager.addInventoryItem(new InventoryItem({
-      productId: 'PROD-456',
-      productName: 'Widget B',
-      sku: 'WID-B-001',
-      category: 'Electronics',
-      unit: 'pieces',
-      currentStock: 100,
-      reservedStock: 0,
-      minStockLevel: 10,
-      reorderPoint: 15
-    }));
-    console.log('[Server] Seeded inventory: Widget A (200 boxes), Widget B (100 pieces)');
+    const clothing = getCatalogForSeed();
+    clothing.forEach(p => {
+      stateManager.addInventoryItem(new InventoryItem(p));
+    });
+    console.log('[Server] Seeded inventory: 10 clothing products (same as WhatsApp catalog)');
   }
   if (stateManager.getAllStaff().length === 0) {
     stateManager.addStaff(new StaffMember({
@@ -72,7 +55,7 @@ function seedState() {
       name: 'Priya Sharma',
       phone: '+91-98765-11111',
       role: 'PRODUCTION',
-      skills: ['assembly', 'quality_check', 'packing'],
+      skills: ['assembly'],
       status: 'ONLINE',
       currentWorkload: 0,
       maxCapacity: 8,
@@ -85,12 +68,45 @@ function seedState() {
       name: 'Amit Kumar',
       phone: '+91-98765-22222',
       role: 'PRODUCTION',
-      skills: ['assembly', 'packing'],
+      skills: ['assembly'],
       status: 'ONLINE',
-      currentWorkload: 4.5,
+      currentWorkload: 3,
       maxCapacity: 8
     }));
-    console.log('[Server] Seeded staff: Priya Sharma (0h free), Amit Kumar (4.5h busy, 3.5h free)');
+    stateManager.addStaff(new StaffMember({
+      staffId: 'STAFF-003',
+      name: 'Sunita Reddy',
+      phone: '+91-98765-33333',
+      role: 'QUALITY',
+      skills: ['quality_check'],
+      status: 'ONLINE',
+      currentWorkload: 1,
+      maxCapacity: 8,
+      location: 'Quality Station'
+    }));
+    stateManager.addStaff(new StaffMember({
+      staffId: 'STAFF-004',
+      name: 'Ravi Singh',
+      phone: '+91-98765-44444',
+      role: 'PACKING',
+      skills: ['packing'],
+      status: 'ONLINE',
+      currentWorkload: 2,
+      maxCapacity: 8,
+      location: 'Packing Area'
+    }));
+    stateManager.addStaff(new StaffMember({
+      staffId: 'STAFF-005',
+      name: 'Kavita Nair',
+      phone: '+91-98765-55555',
+      role: 'DELIVERY',
+      skills: ['packing'],
+      status: 'ONLINE',
+      currentWorkload: 0,
+      maxCapacity: 8,
+      location: 'Dispatch'
+    }));
+    console.log('[Server] Seeded staff: PRODUCTION (Priya 0h, Amit 3h), QUALITY (Sunita 1h), PACKING (Ravi 2h), DELIVERY (Kavita 0h)');
   }
 }
 seedState();
