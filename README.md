@@ -1,10 +1,4 @@
-# Divya Warule — Portfolio
 
-Personal portfolio site for **Divya Raosaheb Warule** — Full Stack Developer & Agentic AI Builder.
-
-**Live portfolio:** [https://jay-07-pixel.github.io/Divya_Portfolio/](https://jay-07-pixel.github.io/Divya_Portfolio/)
-
----
 
 # KALPANIK Operations AI
 
